@@ -1,0 +1,11 @@
+export const success = (res, message, data = null, code = 200) => {
+  const payload = { status: 'success', message };
+  if (data !== null) payload.data = data;
+  return res.status(code).json(payload);
+};
+
+export const error = (res, message, code = 500, errors = null) => {
+  const payload = { status: 'error', message };
+  if (errors !== null) payload.errors = errors;
+  return res.status(code).json(payload);
+};
