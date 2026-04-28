@@ -107,13 +107,6 @@ const AppMenu = () => {
         ],
       },
       {
-        label: "MESIN & PERALATAN",
-        items: [
-          { label: "Data Mesin",   icon: "pi pi-fw pi-server",   to: "/manajer/mesin"        },
-          { label: "Jadwal Mesin", icon: "pi pi-fw pi-calendar", to: "/manajer/mesin/jadwal" },
-        ],
-      },
-      {
         label: "LAPORAN",
         items: [
           { label: "Laporan Kinerja",  icon: "pi pi-fw pi-chart-line", to: "/manajer/laporan/kinerja"  },

@@ -9,6 +9,9 @@ import materialRoutes from './routes/materialRoutes.js';
 import satuanRoutes from './routes/satuanRoutes.js';
 import jobRoutes from './routes/jobRoutes.js';
 import dashboardManajerRoutes from './routes/dashboardManajerRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
+import scheduleRoutes from './routes/scheduleRoutes.js';
+
 
 
 const app = express();
@@ -35,6 +38,8 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/satuan', satuanRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/dashboard/manajer', dashboardManajerRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/schedules', scheduleRoutes);
 
 
 
