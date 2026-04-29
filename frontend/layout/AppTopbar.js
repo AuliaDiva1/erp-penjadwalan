@@ -66,7 +66,7 @@ const AppTopbar = forwardRef((props, ref) => {
         localStorage.removeItem("USER_EMAIL");
         localStorage.removeItem("USER_ID");
 
-        router.replace("/auth/login");
+        router.replace("/");
     }
     };
 

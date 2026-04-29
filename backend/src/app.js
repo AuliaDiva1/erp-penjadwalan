@@ -11,6 +11,10 @@ import jobRoutes from './routes/jobRoutes.js';
 import dashboardManajerRoutes from './routes/dashboardManajerRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import scheduleRoutes from './routes/scheduleRoutes.js';
+import dashboardGudangRoutes from './routes/dashboardGudangRoutes.js';
+import procurementRoutes from './routes/procurementRoutes.js';
+
+
 
 
 
@@ -40,6 +44,8 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/dashboard/manajer', dashboardManajerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/schedules', scheduleRoutes);
+app.use('/api/dashboard', dashboardGudangRoutes);
+app.use('/api/procurements', procurementRoutes);
 
 
 

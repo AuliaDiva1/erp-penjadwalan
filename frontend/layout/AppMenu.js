@@ -135,7 +135,6 @@ const AppMenu = () => {
             icon: "pi pi-fw pi-box",
             items: [
               { label: "Data Stok",   icon: "pi pi-fw pi-list",                 to: "/gudang/stok"        },
-              { label: "Update Stok", icon: "pi pi-fw pi-pencil",               to: "/gudang/stok/update" },
               { label: "Stok Kritis", icon: "pi pi-fw pi-exclamation-triangle", to: "/gudang/stok/kritis" },
             ],
           },
