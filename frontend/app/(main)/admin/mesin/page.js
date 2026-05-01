@@ -8,7 +8,7 @@ import { Toast } from 'primereact/toast';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import FormMachine from './components/FormMachine';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function MachinesPage() {
   const toast = useRef(null);

@@ -9,7 +9,7 @@ import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import FormMaterial from './components/FormMaterial';
 import FormUpdateStock from './components/FormUpdateStock';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function MaterialsPage() {
   const toast = useRef(null);

@@ -9,7 +9,7 @@ import { InputText } from 'primereact/inputtext';
 import { ProgressBar } from 'primereact/progressbar';
 import DetailStok from './components/DetailStok';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function MonitoringStokPage() {
   const toast = useRef(null);

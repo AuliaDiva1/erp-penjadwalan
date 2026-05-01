@@ -10,7 +10,7 @@ import { Badge } from 'primereact/badge';
 import FormJob from './components/FormJob';
 import FormActual from './components/FormActual';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const STATUS_SEVERITY = {
   Pending:      'warning',

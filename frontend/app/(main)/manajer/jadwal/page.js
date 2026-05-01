@@ -10,7 +10,7 @@ import { InputText } from 'primereact/inputtext';
 import FormRevisi from './components/FormRevisi';
 import DetailJadwal from './components/DetailJadwal';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const statusConfig = {
   draft:   { label: 'Draft',   severity: 'secondary' },

@@ -6,7 +6,7 @@ import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
 import { useRouter } from 'next/navigation';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function AdminDashboard() {
   const toast = useRef(null);
