@@ -13,10 +13,8 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import scheduleRoutes from './routes/scheduleRoutes.js';
 import dashboardGudangRoutes from './routes/dashboardGudangRoutes.js';
 import procurementRoutes from './routes/procurementRoutes.js';
-
-
-
-
+import activityLogRoutes from './routes/activityLogRoutes.js';
+import { activityLogger } from './middleware/activityLogMiddleware.js';
 
 const app = express();
 
@@ -30,12 +28,13 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+app.use(activityLogger);
+
 app.get("/", (req, res) => {
   res.status(200).json({ message: "ERP Penjadwalan API berjalan" });
 });
 
 app.use("/api/auth", authRoutes);
-
 app.use("/api/users", userRoutes);
 app.use('/api/machines', machineRoutes);
 app.use('/api/materials', materialRoutes);
@@ -46,8 +45,6 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/dashboard', dashboardGudangRoutes);
 app.use('/api/procurements', procurementRoutes);
-
-
-
+app.use('/api/activity-logs', activityLogRoutes);
 
 export default app;
