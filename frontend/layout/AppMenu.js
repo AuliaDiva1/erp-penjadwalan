@@ -144,7 +144,6 @@ const AppMenu = () => {
         label: "PENGADAAN",
         items: [
           { label: "Notifikasi Pengadaan", icon: "pi pi-fw pi-bell",         to: "/gudang/pengadaan/notifikasi" },
-          { label: "Konfirmasi Pengadaan", icon: "pi pi-fw pi-check-circle", to: "/gudang/pengadaan/konfirmasi" },
           { label: "Riwayat Pengadaan",    icon: "pi pi-fw pi-history",      to: "/gudang/pengadaan/riwayat"    },
         ],
       },
