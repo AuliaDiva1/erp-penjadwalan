@@ -1,10 +1,7 @@
-import { getAllJobs, getJobById, addJob, updateJob, deleteJob } from '../models/jobModel.js';
+import { success, error } from '../utils/response.js';
+import * as Model from '../models/jobModel.js';
 import { db } from '../core/config/knex.js';
 
-/**
- * Helper untuk mengubah format ISO 8601 (2026-04-30T08:06:07.051Z)
- * menjadi format yang didukung MySQL (2026-04-30 08:06:07.051)
- */
 const formatDateToMySQL = (dateStr) => {
   if (!dateStr) return null;
   return dateStr.replace('T', ' ').replace('Z', '');
@@ -12,20 +9,56 @@ const formatDateToMySQL = (dateStr) => {
 
 export const getAllJobsController = async (req, res) => {
   try {
-    const data = await getAllJobs();
-    res.json({ success: true, data });
+    const data = await Model.getAllJobs();
+    return success(res, 'Berhasil mengambil data job', data);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('getAllJobs error:', err);
+    return error(res, 'Gagal mengambil data job');
   }
 };
 
 export const getJobByIdController = async (req, res) => {
   try {
-    const job = await getJobById(req.params.id);
+    const job = await Model.getJobById(req.params.id);
     if (!job) return res.status(404).json({ success: false, message: 'Job tidak ditemukan' });
-    res.json({ success: true, data: job });
+    return success(res, 'Berhasil mengambil data job', job);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('getJobById error:', err);
+    return error(res, 'Gagal mengambil data job');
+  }
+};
+
+export const getJobsByStatusController = async (req, res) => {
+  try {
+    const { status } = req.params;
+    const validStatus = ['Pending', 'Scheduled', 'In Progress', 'Completed', 'Delayed', 'Failed'];
+    if (!validStatus.includes(status))
+      return res.status(400).json({ success: false, message: 'Status tidak valid' });
+    const data = await Model.getJobsByStatus(status);
+    return success(res, `Berhasil mengambil job dengan status ${status}`, data);
+  } catch (err) {
+    console.error('getJobsByStatus error:', err);
+    return error(res, 'Gagal mengambil data job');
+  }
+};
+
+export const getUrgentJobsController = async (req, res) => {
+  try {
+    const data = await Model.getUrgentJobs();
+    return success(res, 'Berhasil mengambil job urgent', data);
+  } catch (err) {
+    console.error('getUrgentJobs error:', err);
+    return error(res, 'Gagal mengambil job urgent');
+  }
+};
+
+export const getIdleMachinesController = async (req, res) => {
+  try {
+    const data = await Model.getIdleMachines();
+    return success(res, 'Berhasil mengambil mesin idle', data);
+  } catch (err) {
+    console.error('getIdleMachines error:', err);
+    return error(res, 'Gagal mengambil mesin idle');
   }
 };
 
@@ -34,27 +67,32 @@ export const createJobController = async (req, res) => {
     const {
       machine_id, material_id, operation_type,
       processing_time, energy_consumption,
-      machine_availability, material_used, deadline,
+      machine_availability, material_used,
+      deadline_customer, is_urgent,
     } = req.body;
 
-    // Validasi input wajib
     if (!operation_type)
       return res.status(400).json({ success: false, message: 'Operation type wajib diisi' });
-    if (!processing_time || processing_time <= 0)
-      return res.status(400).json({ success: false, message: 'Processing time wajib diisi' });
-    if (!energy_consumption || energy_consumption <= 0)
-      return res.status(400).json({ success: false, message: 'Energy consumption wajib diisi' });
-    if (!machine_availability)
-      return res.status(400).json({ success: false, message: 'Machine availability wajib diisi' });
 
-    // Validasi stok otomatis (RF-13.1)
+    const validOperations = ['Grinding', 'Additive', 'Lathe', 'Milling', 'Drilling'];
+    if (!validOperations.includes(operation_type))
+      return res.status(400).json({ success: false, message: 'Operation type tidak valid' });
+
+    if (!processing_time || processing_time < 20 || processing_time > 120)
+      return res.status(400).json({ success: false, message: 'Processing time harus antara 20-120 menit' });
+
+    if (!energy_consumption || energy_consumption < 2.01 || energy_consumption > 14.98)
+      return res.status(400).json({ success: false, message: 'Energy consumption harus antara 2.01-14.98 kWh' });
+
+    if (!machine_availability || machine_availability < 80 || machine_availability > 99)
+      return res.status(400).json({ success: false, message: 'Machine availability harus antara 80-99%' });
+
     if (material_id && material_used) {
       const material = await db('materials').where({ id: material_id }).first();
       if (!material)
         return res.status(404).json({ success: false, message: 'Material tidak ditemukan' });
 
       if (material.current_stock < material_used) {
-        // Trigger notifikasi pengadaan otomatis (RF-13.2)
         const alreadyPending = await db('procurements')
           .where({ material_id, status: 'pending' })
           .first();
@@ -73,13 +111,15 @@ export const createJobController = async (req, res) => {
 
         return res.status(400).json({
           success: false,
+          stockInsufficient: true,
           message: `Stok ${material.material_name} tidak cukup. Stok: ${material.current_stock}, dibutuhkan: ${material_used}. Notifikasi pengadaan otomatis telah dikirim.`,
         });
       }
     }
 
-    // Eksekusi penambahan Job dengan format tanggal yang benar
-    const job = await addJob({
+    const deadlineCustomerFormatted = formatDateToMySQL(deadline_customer);
+
+    const job = await Model.addJob({
       user_id: req.user?.id || null,
       machine_id: machine_id || null,
       material_id: material_id || null,
@@ -88,29 +128,44 @@ export const createJobController = async (req, res) => {
       energy_consumption,
       machine_availability,
       material_used: material_used || null,
-      deadline: formatDateToMySQL(deadline), // Format diperbaiki di sini
+      deadline_customer: deadlineCustomerFormatted,
+      deadline_is_manual: deadlineCustomerFormatted ? true : false,
+      deadline: deadlineCustomerFormatted,
+      is_urgent: is_urgent || false,
       job_status: 'Pending',
     });
 
-    res.status(201).json({ success: true, message: 'Job berhasil ditambahkan', data: job });
+    return res.status(201).json({
+      success: true,
+      message: 'Job berhasil ditambahkan',
+      data: job,
+      info: deadlineCustomerFormatted
+        ? 'Deadline customer tersimpan. Sistem akan memvalidasi saat pipeline dijalankan.'
+        : 'Deadline akan diprediksi otomatis oleh sistem saat pipeline dijalankan.',
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('createJob error:', err);
+    return error(res, 'Gagal menambahkan job');
   }
 };
 
 export const updateJobController = async (req, res) => {
   try {
-    const job = await getJobById(req.params.id);
+    const job = await Model.getJobById(req.params.id);
     if (!job) return res.status(404).json({ success: false, message: 'Job tidak ditemukan' });
+
+    if (job.job_status === 'In Progress')
+      return res.status(400).json({ success: false, message: 'Job yang sedang In Progress tidak dapat diedit' });
 
     const {
       machine_id, material_id, operation_type,
       processing_time, energy_consumption,
-      machine_availability, material_used, deadline,
-      actual_start, actual_end, job_status,
+      machine_availability, material_used,
+      deadline_customer, actual_start, actual_end,
+      job_status, is_urgent, priority_override,
     } = req.body;
 
-    const updated = await updateJob(req.params.id, {
+    const updated = await Model.updateJob(req.params.id, {
       machine_id,
       material_id,
       operation_type,
@@ -118,26 +173,84 @@ export const updateJobController = async (req, res) => {
       energy_consumption,
       machine_availability,
       material_used,
-      deadline: formatDateToMySQL(deadline),        // Format diperbaiki
-      actual_start: formatDateToMySQL(actual_start), // Format diperbaiki
-      actual_end: formatDateToMySQL(actual_end),     // Format diperbaiki
+      deadline_customer: formatDateToMySQL(deadline_customer),
+      deadline_is_manual: deadline_customer ? true : undefined,
+      deadline: deadline_customer ? formatDateToMySQL(deadline_customer) : undefined,
+      actual_start: formatDateToMySQL(actual_start),
+      actual_end: formatDateToMySQL(actual_end),
       job_status,
+      is_urgent,
+      priority_override,
     });
 
-    res.json({ success: true, message: 'Job berhasil diperbarui', data: updated });
+    return success(res, 'Job berhasil diperbarui', updated);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('updateJob error:', err);
+    return error(res, 'Gagal memperbarui job');
+  }
+};
+
+export const updateJobStatusController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { job_status } = req.body;
+
+    const job = await Model.getJobById(id);
+    if (!job) return res.status(404).json({ success: false, message: 'Job tidak ditemukan' });
+
+    const validStatus = ['Pending', 'Scheduled', 'In Progress', 'Completed', 'Delayed', 'Failed'];
+    if (!validStatus.includes(job_status))
+      return res.status(400).json({ success: false, message: 'Status tidak valid' });
+
+    const updated = await Model.updateJobStatus(id, job_status);
+    return success(res, 'Status job berhasil diperbarui', updated);
+  } catch (err) {
+    console.error('updateJobStatus error:', err);
+    return error(res, 'Gagal memperbarui status job');
+  }
+};
+
+export const rescheduleJobController = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const job = await Model.getJobById(id);
+    if (!job) return res.status(404).json({ success: false, message: 'Job tidak ditemukan' });
+
+    if (job.job_status === 'Completed' || job.job_status === 'Failed')
+      return res.status(400).json({ success: false, message: 'Job sudah selesai, tidak bisa dijadwal ulang' });
+
+    const idleMachines = await Model.getIdleMachines();
+    await Model.incrementRescheduleCount(id);
+    await Model.updateJobStatus(id, 'Pending');
+
+    return success(res, 'Job berhasil ditandai untuk reschedule', {
+      job_id: job.job_id,
+      reschedule_count: job.reschedule_count + 1,
+      idle_machines_available: idleMachines.length,
+      idle_machines: idleMachines,
+      message: idleMachines.length > 0
+        ? `Ada ${idleMachines.length} mesin idle. Jalankan pipeline untuk jadwal ulang.`
+        : 'Semua mesin sedang sibuk. Pipeline akan menyisipkan job ke antrian optimal.',
+    });
+  } catch (err) {
+    console.error('rescheduleJob error:', err);
+    return error(res, 'Gagal melakukan reschedule job');
   }
 };
 
 export const deleteJobController = async (req, res) => {
   try {
-    const job = await getJobById(req.params.id);
+    const job = await Model.getJobById(req.params.id);
     if (!job) return res.status(404).json({ success: false, message: 'Job tidak ditemukan' });
 
-    await deleteJob(req.params.id);
-    res.json({ success: true, message: 'Job berhasil dihapus' });
+    if (job.job_status === 'In Progress')
+      return res.status(400).json({ success: false, message: 'Job yang sedang In Progress tidak dapat dihapus' });
+
+    await Model.deleteJob(req.params.id);
+    return success(res, 'Job berhasil dihapus');
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('deleteJob error:', err);
+    return error(res, 'Gagal menghapus job');
   }
 };
