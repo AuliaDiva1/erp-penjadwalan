@@ -15,6 +15,8 @@ import dashboardGudangRoutes from './routes/dashboardGudangRoutes.js';
 import procurementRoutes from './routes/procurementRoutes.js';
 import activityLogRoutes from './routes/activityLogRoutes.js';
 import { activityLogger } from './middleware/activityLogMiddleware.js';
+import konfigurasiFuzzyRoutes from './routes/konfigurasiFuzzyRoutes.js';
+import konfigurasiCCEARoutes  from './routes/konfigurasiCCEARoutes.js';
 
 const app = express();
 
@@ -46,5 +48,8 @@ app.use('/api/schedules', scheduleRoutes);
 app.use('/api/dashboard', dashboardGudangRoutes);
 app.use('/api/procurements', procurementRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/konfigurasi/fuzzy', konfigurasiFuzzyRoutes);
+app.use('/api/konfigurasi/ccea',  konfigurasiCCEARoutes);
+
 
 export default app;
