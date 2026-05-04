@@ -10,16 +10,16 @@ import { useRouter } from 'next/navigation';
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function AdminDashboard() {
-  const toast                           = useRef(null);
-  const router                          = useRouter();
-  const [stats,         setStats]       = useState(null);
-  const [stokKritis,    setStokKritis]  = useState([]);
-  const [recentJobs,    setRecentJobs]  = useState([]);
+  const toast                            = useRef(null);
+  const router                           = useRouter();
+  const [stats,          setStats]       = useState(null);
+  const [stokKritis,     setStokKritis]  = useState([]);
+  const [recentJobs,     setRecentJobs]  = useState([]);
   const [inProgressJobs, setInProgressJobs] = useState([]);
-  const [logs,          setLogs]        = useState([]);
-  const [modulSummary,  setModulSummary] = useState(null);
-  const [modelRF,       setModelRF]     = useState(null);
-  const [loading,       setLoading]     = useState(true);
+  const [logs,           setLogs]        = useState([]);
+  const [modulSummary,   setModulSummary] = useState(null);
+  const [modelRF,        setModelRF]     = useState(null);
+  const [loading,        setLoading]     = useState(true);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
@@ -44,10 +44,10 @@ export default function AdminDashboard() {
       if (dStats.success)  setStats(dStats.data);
       if (dStok.success)   setStokKritis(dStok.data);
       if (dJadwal.success) {
-        setRecentJobs(dJadwal.data.recent      || []);
+        setRecentJobs(dJadwal.data.recent         || []);
         setInProgressJobs(dJadwal.data.in_progress || []);
       }
-      if (dLog.success)   setLogs(dLog.data   || []);
+      if (dLog.success)   setLogs(dLog.data    || []);
       if (dModul.success) setModulSummary(dModul.data);
       if (dModel.success) setModelRF(dModel.data);
     } catch (err) {
@@ -79,12 +79,12 @@ export default function AdminDashboard() {
   };
 
   const statCards = [
-    { label: 'Total Pengguna',  value: stats?.users?.total       ?? 0, sub: `${stats?.users?.aktif ?? 0} aktif`,          icon: 'pi-users',                color: '#4f46e5', bg: '#eef2ff', route: '/admin/pengguna'          },
-    { label: 'Mesin Aktif',     value: stats?.machines?.active   ?? 0, sub: `${stats?.machines?.total ?? 0} total mesin`, icon: 'pi-server',               color: '#0891b2', bg: '#e0f2fe', route: '/admin/mesin'              },
-    { label: 'Total Bahan Baku',value: modulSummary?.total_materials ?? 0, sub: `${stats?.stok_kritis ?? 0} item kritis`, icon: 'pi-box',                  color: '#059669', bg: '#d1fae5', route: '/admin/material'           },
-    { label: 'Stok Kritis',     value: stats?.stok_kritis        ?? 0, sub: 'perlu pengadaan',                            icon: 'pi-exclamation-triangle', color: '#dc2626', bg: '#fee2e2', route: '/admin/monitoring/stok'    },
-    { label: 'Job Berjalan',    value: stats?.jobs?.in_progress  ?? 0, sub: `${stats?.jobs?.scheduled ?? 0} terjadwal`,   icon: 'pi-calendar',             color: '#d97706', bg: '#fef3c7', route: '/admin/monitoring/jadwal'  },
-    { label: 'Log Hari Ini',    value: stats?.log_hari_ini       ?? 0, sub: 'aktivitas sistem',                           icon: 'pi-list',                 color: '#7c3aed', bg: '#f5f3ff', route: '/admin/monitoring/log'     },
+    { label: 'Total Pengguna',   value: stats?.users?.total            ?? 0, sub: `${stats?.users?.aktif ?? 0} aktif`,          icon: 'pi-users',                color: '#4f46e5', bg: '#eef2ff', route: '/admin/pengguna'         },
+    { label: 'Mesin Aktif',      value: stats?.machines?.active        ?? 0, sub: `${stats?.machines?.total ?? 0} total mesin`, icon: 'pi-server',               color: '#0891b2', bg: '#e0f2fe', route: '/admin/mesin'             },
+    { label: 'Total Bahan Baku', value: modulSummary?.total_materials  ?? 0, sub: `${stats?.stok_kritis ?? 0} item kritis`,    icon: 'pi-box',                  color: '#059669', bg: '#d1fae5', route: '/admin/materials'          },
+    { label: 'Stok Kritis',      value: stats?.stok_kritis             ?? 0, sub: 'perlu pengadaan',                            icon: 'pi-exclamation-triangle', color: '#dc2626', bg: '#fee2e2', route: '/admin/monitoring/stok'   },
+    { label: 'Job Berjalan',     value: stats?.jobs?.in_progress       ?? 0, sub: `${stats?.jobs?.scheduled ?? 0} terjadwal`,  icon: 'pi-calendar',             color: '#d97706', bg: '#fef3c7', route: '/admin/monitoring/jadwal' },
+    { label: 'Log Hari Ini',     value: stats?.log_hari_ini            ?? 0, sub: 'aktivitas sistem',                           icon: 'pi-list',                 color: '#7c3aed', bg: '#f5f3ff', route: '/admin/monitoring/log'    },
   ];
 
   const jobBarItems = [
@@ -105,25 +105,27 @@ export default function AdminDashboard() {
     { label: 'Pengadaan Pending', value: modulSummary.pending_pengadaan, icon: 'pi-bell',      color: '#dc2626', bg: '#fee2e2' },
   ] : [];
 
-  // field disesuaikan dengan response Flask
   const rfRows = modelRF ? [
     { key: 'Nama Model', val: modelRF.nama_model  || 'Random Forest Regressor' },
     { key: 'Versi',      val: modelRF.versi        || '-' },
-    { key: 'MAE',        val: modelRF.mae          ? `${modelRF.mae} menit`                        : '-' },
-    { key: 'RMSE',       val: modelRF.rmse         ? `${modelRF.rmse} menit`                       : '-' },
-    { key: 'R²',         val: modelRF.r2_score     ? `${(modelRF.r2_score * 100).toFixed(1)}%`     : '-' },
-    { key: 'Status',     val: modelRF.is_active    ? <Tag value="Aktif" severity="success" />       : <Tag value="Tidak Aktif" severity="secondary" /> },
+    { key: 'MAE',        val: modelRF.mae          ? `${modelRF.mae} menit`                    : '-' },
+    { key: 'RMSE',       val: modelRF.rmse         ? `${modelRF.rmse} menit`                   : '-' },
+    { key: 'R²',         val: modelRF.r2_score     ? `${(modelRF.r2_score * 100).toFixed(1)}%` : '-' },
+    { key: 'Status',     val: modelRF.is_active    ? <Tag value="Aktif" severity="success" />   : <Tag value="Tidak Aktif" severity="secondary" /> },
     { key: 'Dilatih',    val: formatDate(modelRF.trained_at) },
   ] : [];
 
   const menuShortcuts = [
-    { label: 'Kelola Pengguna',   icon: 'pi-users',      desc: 'Tambah, edit, dan kelola akun pengguna',      route: '/admin/pengguna',                    color: '#4f46e5', bg: '#eef2ff' },
-    { label: 'Kelola Mesin',      icon: 'pi-server',     desc: 'Manajemen data mesin produksi',                route: '/admin/mesin',                       color: '#0891b2', bg: '#e0f2fe' },
-    { label: 'Kelola Bahan Baku', icon: 'pi-box',        desc: 'Manajemen material dan batas minimum stok',    route: '/admin/material',                    color: '#059669', bg: '#d1fae5' },
-    { label: 'Fuzzy Mamdani',     icon: 'pi-sliders-h',  desc: 'Atur 27 rules dan bobot operation type',       route: '/admin/konfigurasi/fuzzy/parameter',  color: '#d97706', bg: '#fef3c7' },
-    { label: 'Parameter CCEA',    icon: 'pi-chart-line', desc: 'Atur populasi, iterasi, dan dekomposisi CCEA', route: '/admin/konfigurasi/ccea',             color: '#d97706', bg: '#fef3c7' },
-    { label: 'Model Prediksi RF', icon: 'pi-cog',        desc: 'Pantau dan reset model Random Forest',         route: '/admin/konfigurasi/model',            color: '#7c3aed', bg: '#f5f3ff' },
+    { label: 'Kelola Pengguna',   icon: 'pi-users',      desc: 'Tambah, edit, dan kelola akun pengguna',      route: '/admin/pengguna',                   color: '#4f46e5', bg: '#eef2ff' },
+    { label: 'Kelola Mesin',      icon: 'pi-server',     desc: 'Manajemen data mesin produksi',                route: '/admin/mesin',                      color: '#0891b2', bg: '#e0f2fe' },
+    { label: 'Kelola Bahan Baku', icon: 'pi-box',        desc: 'Manajemen material dan batas minimum stok',    route: '/admin/materials',                   color: '#059669', bg: '#d1fae5' },
+    { label: 'Fuzzy Mamdani',     icon: 'pi-sliders-h',  desc: 'Atur 27 rules dan bobot operation type',       route: '/admin/konfigurasi/fuzzy/parameter', color: '#d97706', bg: '#fef3c7' },
+    { label: 'Parameter CCEA',    icon: 'pi-chart-line', desc: 'Atur populasi, iterasi, dan dekomposisi CCEA', route: '/admin/konfigurasi/ccea',            color: '#d97706', bg: '#fef3c7' },
+    { label: 'Model Prediksi RF', icon: 'pi-cog',        desc: 'Pantau dan reset model Random Forest',         route: '/admin/konfigurasi/model',           color: '#7c3aed', bg: '#f5f3ff' },
   ];
+
+  // nomor urut mulai dari 1
+  const noUrut = (options) => options.rowIndex + 1;
 
   return (
     <div>
@@ -146,7 +148,7 @@ export default function AdminDashboard() {
       </p>
       <div className="grid mb-4">
         {statCards.map((s, i) => (
-          <div key={i} className="col-12 sm:col-6 lg:col-4 xl:col-2">
+          <div key={`stat-${i + 1}`} className="col-12 sm:col-6 lg:col-4 xl:col-2">
             <div
               className="card cursor-pointer hover:shadow-3 transition-all transition-duration-200"
               onClick={() => router.push(s.route)}
@@ -181,7 +183,7 @@ export default function AdminDashboard() {
           <div className="card mb-4 p-0">
             <div className="grid m-0" style={{ borderRadius: 8, overflow: 'hidden' }}>
               {jobBarItems.map((j, i) => (
-                <div key={i} className="col text-center py-3 cursor-pointer"
+                <div key={`jobbar-${i + 1}`} className="col text-center py-3 cursor-pointer"
                   style={{ borderRight: i < jobBarItems.length - 1 ? '1px solid var(--surface-200)' : 'none' }}
                   onClick={() => router.push('/admin/monitoring/jadwal')}>
                   <p className="text-2xl font-bold m-0 mb-1" style={{ color: j.color }}>{j.value ?? 0}</p>
@@ -212,7 +214,7 @@ export default function AdminDashboard() {
               </div>
             ) : (
               stokKritis.map((s, i) => (
-                <div key={i} className="flex justify-content-between align-items-center px-3 py-2 mb-2 border-round"
+                <div key={`stok-${i + 1}`} className="flex justify-content-between align-items-center px-3 py-2 mb-2 border-round"
                   style={{ background: '#fff5f5', border: '1px solid #fecaca' }}>
                   <div>
                     <p className="font-semibold m-0 text-sm">{s.material_name}</p>
@@ -242,7 +244,7 @@ export default function AdminDashboard() {
               </div>
             ) : (
               inProgressJobs.map((j, i) => (
-                <div key={i} className="flex justify-content-between align-items-center px-3 py-2 mb-2 border-round"
+                <div key={`inprogress-${i + 1}`} className="flex justify-content-between align-items-center px-3 py-2 mb-2 border-round"
                   style={{ background: 'var(--surface-50)', border: '1px solid var(--surface-200)' }}>
                   <div>
                     <p className="font-semibold m-0 text-sm">{j.job_id} — {j.operation_type}</p>
@@ -265,6 +267,7 @@ export default function AdminDashboard() {
           <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/jadwal')} />
         </div>
         <DataTable value={recentJobs} loading={loading} emptyMessage="Belum ada data job" size="small" stripedRows>
+          <Column header="No" body={noUrut} style={{ width: '3rem', textAlign: 'center' }} />
           <Column field="job_id"         header="Job ID"      style={{ fontWeight: 600 }} />
           <Column field="operation_type" header="Operasi" />
           <Column field="machine_name"   header="Mesin"       body={(r) => r.machine_name || '-'} />
@@ -281,6 +284,7 @@ export default function AdminDashboard() {
           <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/log')} />
         </div>
         <DataTable value={logs} loading={loading} emptyMessage="Belum ada log" size="small" stripedRows>
+          <Column header="No" body={noUrut} style={{ width: '3rem', textAlign: 'center' }} />
           <Column field="full_name"   header="Pengguna"  body={(r) => r.full_name || r.username || '-'} />
           <Column field="role"        header="Role"      body={(r) => r.role ? <Tag value={r.role} severity="info" /> : '-'} />
           <Column field="module"      header="Modul" />
@@ -300,7 +304,7 @@ export default function AdminDashboard() {
             <h4 className="m-0 mb-3" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Ringkasan Semua Modul</h4>
             <div className="grid">
               {modulItems.map((m, i) => (
-                <div key={i} className="col-6 md:col-4 mb-3">
+                <div key={`modul-${i + 1}`} className="col-6 md:col-4 mb-3">
                   <div className="flex align-items-center gap-2">
                     <div style={{ width: 36, height: 36, borderRadius: 8, background: m.bg,
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -323,7 +327,7 @@ export default function AdminDashboard() {
             {modelRF ? (
               <>
                 {rfRows.map((r, i) => (
-                  <div key={i} className="flex justify-content-between align-items-center py-2"
+                  <div key={`rf-${i + 1}`} className="flex justify-content-between align-items-center py-2"
                     style={{ borderBottom: i < rfRows.length - 1 ? '1px solid var(--surface-200)' : 'none' }}>
                     <span className="text-color-secondary text-sm">{r.key}</span>
                     <span className="font-semibold text-sm">{r.val}</span>
@@ -361,7 +365,7 @@ export default function AdminDashboard() {
               { key: 'Status API', val: <Tag value="Online" severity="success" /> },
               { key: 'Flask',      val: modelRF ? <Tag value="Online" severity="success" /> : <Tag value="Offline" severity="danger" /> },
             ].map((r, i) => (
-              <div key={i} className="flex justify-content-between align-items-center py-2"
+              <div key={`info-${i + 1}`} className="flex justify-content-between align-items-center py-2"
                 style={{ borderBottom: i < 3 ? '1px solid var(--surface-200)' : 'none' }}>
                 <span className="text-color-secondary text-sm">{r.key}</span>
                 <span className="font-semibold text-sm">{r.val}</span>
@@ -378,7 +382,7 @@ export default function AdminDashboard() {
       </p>
       <div className="grid">
         {menuShortcuts.map((m, i) => (
-          <div key={i} className="col-12 md:col-6 lg:col-4">
+          <div key={`shortcut-${i + 1}`} className="col-12 md:col-6 lg:col-4">
             <div
               className="flex align-items-start gap-3 p-3 cursor-pointer hover:shadow-2 transition-all transition-duration-200"
               style={{ border: '1px solid var(--surface-200)', borderRadius: 8 }}
