@@ -24,9 +24,9 @@ export const getPendingProcurementsController = async (req, res) => {
 
 export const updateProcurementStatusController = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id }          = req.params;
     const { status, notes } = req.body;
-    const user_id = req.user?.id;
+    const user_id         = req.user?.userId;  // ← fix dari req.user?.id
 
     const procurement = await Model.getProcurementById(id);
     if (!procurement) {
@@ -40,14 +40,23 @@ export const updateProcurementStatusController = async (req, res) => {
 
     await Model.updateProcurementStatus(id, status, user_id, notes);
 
-    // kalau completed, update stok bahan baku
+    // kalau completed, update stok bahan baku otomatis
     if (status === 'completed') {
-      const currentMaterial = await db('materials').where({ id: procurement.material_id }).first();
+      const currentMaterial = await db('materials')
+        .where({ id: procurement.material_id })
+        .first();
+
       const newStock = (currentMaterial?.current_stock || 0) + procurement.required_qty;
+
       await db('materials').where({ id: procurement.material_id }).update({
         current_stock: newStock,
-        updated_at: db.fn.now(),
+        updated_at:    db.fn.now(),
       });
+
+      // cek apakah stok masih kritis setelah pengadaan
+      if (newStock <= currentMaterial?.min_stock_level) {
+        console.warn(`[Procurement] Stok ${currentMaterial?.material_name} masih kritis setelah pengadaan: ${newStock}`);
+      }
     }
 
     const updated = await Model.getProcurementById(id);

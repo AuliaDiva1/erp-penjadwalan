@@ -87,6 +87,7 @@ export const createJobController = async (req, res) => {
     if (!machine_availability || machine_availability < 80 || machine_availability > 99)
       return res.status(400).json({ success: false, message: 'Machine availability harus antara 80-99%' });
 
+    // cek stok bahan baku
     if (material_id && material_used) {
       const material = await db('materials').where({ id: material_id }).first();
       if (!material)
@@ -100,17 +101,17 @@ export const createJobController = async (req, res) => {
         if (!alreadyPending) {
           await db('procurements').insert({
             material_id,
-            user_id: req.user?.id || null,
-            required_qty: material_used - material.current_stock,
+            user_id:                  req.user?.userId || null,  // ← fix
+            required_qty:             material_used - material.current_stock,
             current_stock_at_trigger: material.current_stock,
-            status: 'pending',
-            is_auto: true,
-            notes: `Auto-triggered: stok tidak cukup untuk job baru`,
+            status:                   'pending',
+            is_auto:                  true,
+            notes:                    'Auto-triggered: stok tidak cukup untuk job baru',
           });
         }
 
         return res.status(400).json({
-          success: false,
+          success:           false,
           stockInsufficient: true,
           message: `Stok ${material.material_name} tidak cukup. Stok: ${material.current_stock}, dibutuhkan: ${material_used}. Notifikasi pengadaan otomatis telah dikirim.`,
         });
@@ -120,26 +121,26 @@ export const createJobController = async (req, res) => {
     const deadlineCustomerFormatted = formatDateToMySQL(deadline_customer);
 
     const job = await Model.addJob({
-      user_id: req.user?.id || null,
-      machine_id: machine_id || null,
-      material_id: material_id || null,
+      user_id:            req.user?.userId || null,  // ← fix
+      machine_id:         machine_id       || null,
+      material_id:        material_id      || null,
       operation_type,
       processing_time,
       energy_consumption,
       machine_availability,
-      material_used: material_used || null,
-      deadline_customer: deadlineCustomerFormatted,
+      material_used:      material_used    || null,
+      deadline_customer:  deadlineCustomerFormatted,
       deadline_is_manual: deadlineCustomerFormatted ? true : false,
-      deadline: deadlineCustomerFormatted,
-      is_urgent: is_urgent || false,
-      job_status: 'Pending',
+      deadline:           deadlineCustomerFormatted,
+      is_urgent:          is_urgent || false,
+      job_status:         'Pending',
     });
 
     return res.status(201).json({
       success: true,
       message: 'Job berhasil ditambahkan',
-      data: job,
-      info: deadlineCustomerFormatted
+      data:    job,
+      info:    deadlineCustomerFormatted
         ? 'Deadline customer tersimpan. Sistem akan memvalidasi saat pipeline dijalankan.'
         : 'Deadline akan diprediksi otomatis oleh sistem saat pipeline dijalankan.',
     });
@@ -161,8 +162,8 @@ export const updateJobController = async (req, res) => {
       machine_id, material_id, operation_type,
       processing_time, energy_consumption,
       machine_availability, material_used,
-      deadline_customer, actual_start, actual_end,
-      job_status, is_urgent, priority_override,
+      deadline_customer, job_status,
+      is_urgent, priority_override,
     } = req.body;
 
     const updated = await Model.updateJob(req.params.id, {
@@ -173,11 +174,9 @@ export const updateJobController = async (req, res) => {
       energy_consumption,
       machine_availability,
       material_used,
-      deadline_customer: formatDateToMySQL(deadline_customer),
+      deadline_customer:  formatDateToMySQL(deadline_customer),
       deadline_is_manual: deadline_customer ? true : undefined,
-      deadline: deadline_customer ? formatDateToMySQL(deadline_customer) : undefined,
-      actual_start: formatDateToMySQL(actual_start),
-      actual_end: formatDateToMySQL(actual_end),
+      deadline:           deadline_customer ? formatDateToMySQL(deadline_customer) : undefined,
       job_status,
       is_urgent,
       priority_override,
@@ -187,6 +186,87 @@ export const updateJobController = async (req, res) => {
   } catch (err) {
     console.error('updateJob error:', err);
     return error(res, 'Gagal memperbarui job');
+  }
+};
+
+export const updateJobActualController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { actual_start, actual_end, job_status } = req.body;
+
+    const job = await Model.getJobById(id);
+    if (!job)
+      return res.status(404).json({ success: false, message: 'Job tidak ditemukan' });
+
+    const validStatus = ['Pending', 'Scheduled', 'In Progress', 'Completed', 'Delayed', 'Failed'];
+    if (job_status && !validStatus.includes(job_status))
+      return res.status(400).json({ success: false, message: 'Status tidak valid' });
+
+    if (actual_start && actual_end) {
+      const start = new Date(actual_start);
+      const end   = new Date(actual_end);
+      if (end < start)
+        return res.status(400).json({ success: false, message: 'Actual End tidak boleh sebelum Actual Start' });
+    }
+
+    let deadline_warning = false;
+    if (actual_end && job.scheduled_end) {
+      deadline_warning = new Date(actual_end) > new Date(job.scheduled_end);
+    }
+
+    const actualStartFormatted = formatDateToMySQL(actual_start);
+    const actualEndFormatted   = formatDateToMySQL(actual_end);
+
+    await db('jobs').where({ id }).update({
+      actual_start:     actualStartFormatted,
+      actual_end:       actualEndFormatted,
+      job_status:       job_status || job.job_status,
+      deadline_warning: deadline_warning,
+      updated_at:       db.fn.now(),
+    });
+
+    // kurangi stok kalau job Completed
+    if (job_status === 'Completed' && job.material_id && job.material_used) {
+      const material = await db('materials').where({ id: job.material_id }).first();
+      if (material) {
+        const newStock = Math.max(0, material.current_stock - job.material_used);
+        await db('materials').where({ id: job.material_id }).update({
+          current_stock: newStock,
+          updated_at:    db.fn.now(),
+        });
+
+        // trigger notifikasi pengadaan kalau stok di bawah minimum
+        if (newStock <= material.min_stock_level) {
+          const alreadyPending = await db('procurements')
+            .where({ material_id: job.material_id, status: 'pending' })
+            .first();
+
+          if (!alreadyPending) {
+            await db('procurements').insert({
+              material_id:              job.material_id,
+              user_id:                  req.user?.userId || null,  // ← fix
+              required_qty:             material.min_stock_level - newStock + 10,
+              current_stock_at_trigger: newStock,
+              status:                   'pending',
+              is_auto:                  true,
+              notes:                    `Auto-triggered: stok ${material.material_name} di bawah minimum setelah job ${job.job_id} selesai`,
+            });
+          }
+        }
+      }
+    }
+
+    const updated = await Model.getJobById(id);
+    return success(res, 'Data aktual job berhasil disimpan', {
+      ...updated,
+      deadline_warning,
+      info: deadline_warning
+        ? `Job selesai terlambat dari jadwal (${job.scheduled_end})`
+        : 'Job selesai tepat waktu',
+    });
+  } catch (err) {
+    console.error('updateJobActual error:', err);
+    return error(res, 'Gagal menyimpan data aktual job');
   }
 };
 
@@ -225,10 +305,10 @@ export const rescheduleJobController = async (req, res) => {
     await Model.updateJobStatus(id, 'Pending');
 
     return success(res, 'Job berhasil ditandai untuk reschedule', {
-      job_id: job.job_id,
-      reschedule_count: job.reschedule_count + 1,
+      job_id:                  job.job_id,
+      reschedule_count:        job.reschedule_count + 1,
       idle_machines_available: idleMachines.length,
-      idle_machines: idleMachines,
+      idle_machines:           idleMachines,
       message: idleMachines.length > 0
         ? `Ada ${idleMachines.length} mesin idle. Jalankan pipeline untuk jadwal ulang.`
         : 'Semua mesin sedang sibuk. Pipeline akan menyisipkan job ke antrian optimal.',

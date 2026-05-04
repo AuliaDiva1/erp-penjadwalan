@@ -91,7 +91,7 @@ const AppMenu = () => {
             icon: "pi pi-fw pi-file-edit",
             items: [
               { label: "Input Job Baru",  icon: "pi pi-fw pi-plus", to: "/manajer/job/tambah" },
-              { label: "Riwayat Pesanan", icon: "pi pi-fw pi-list", to: "/manajer/job"        },
+              { label: "Riwayat Pesanan", icon: "pi pi-fw pi-list", to: "/manajer/job/riwayat" },
             ],
           },
           {

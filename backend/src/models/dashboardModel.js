@@ -123,27 +123,42 @@ export const getLogHariIni = async () => {
 
 // RF-06.5 — Ringkasan modul
 export const getAllModuleSummary = async () => {
-  const [users, machines, materials, jobs] = await Promise.all([
+  const [users, machines, materials, jobs, schedules, pengadaan] = await Promise.all([
     db('users').count('id as total').first(),
     db('machines').count('id as total').first(),
     db('materials').count('id as total').first(),
     db('jobs').count('id as total').first(),
+    db('schedules').count('id as total').first(),
+    db('procurements').where({ status: 'pending' }).count('id as total').first(),
   ]);
 
   return {
-    total_users:       Number(users?.total || 0),
-    total_machines:    Number(machines?.total || 0),
-    total_materials:   Number(materials?.total || 0),
-    total_jobs:        Number(jobs?.total || 0),
-    total_schedules:   0,
-    pending_pengadaan: 0,
+    total_users:       Number(users?.total       || 0),
+    total_machines:    Number(machines?.total    || 0),
+    total_materials:   Number(materials?.total   || 0),
+    total_jobs:        Number(jobs?.total        || 0),
+    total_schedules:   Number(schedules?.total   || 0),
+    pending_pengadaan: Number(pengadaan?.total   || 0),
   };
 };
 
-// RF-06.6 — Info model RF
-// Jika tabel belum ada, kita return objek default agar frontend tidak null
+// RF-06.6 — Info model RF dari Flask
 export const getRFModelInfo = async () => {
-    // Ganti 'rf_models' dengan nama tabelmu jika sudah dibuat
-    // return db('rf_models').orderBy('trained_at', 'desc').first();
-    return null; 
+  try {
+    const res  = await fetch(`${process.env.PYTHON_API}/model/info`);
+    const data = await res.json();
+    if (data.success) return data.data;
+  } catch (e) {
+    console.error('[getRFModelInfo] Flask tidak bisa diakses:', e.message);
+  }
+
+  return {
+    nama_model:  'Random Forest Regressor',
+    versi:       'v1.0',
+    is_active:   false,
+    trained_at:  null,
+    r2_score:    null,
+    mae:         null,
+    rmse:        null,
+  };
 };

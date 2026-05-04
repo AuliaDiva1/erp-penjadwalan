@@ -7,6 +7,7 @@ import {
   getIdleMachinesController,
   createJobController,
   updateJobController,
+  updateJobActualController,
   updateJobStatusController,
   rescheduleJobController,
   deleteJobController,
@@ -22,6 +23,7 @@ router.get('/status/:status',      authenticate, getJobsByStatusController);
 router.get('/:id',                 authenticate, getJobByIdController);
 router.post('/',                   authenticate, createJobController);
 router.put('/:id',                 authenticate, updateJobController);
+router.patch('/:id/actual',        authenticate, updateJobActualController);
 router.patch('/:id/status',        authenticate, updateJobStatusController);
 router.patch('/:id/reschedule',    authenticate, rescheduleJobController);
 router.delete('/:id',              authenticate, authorizeAdmin, deleteJobController);

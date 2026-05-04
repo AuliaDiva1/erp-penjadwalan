@@ -39,7 +39,7 @@ export const createScheduleController = async (req, res) => {
       total_jobs,
       total_machines,
       status_jadwal: 'draft',
-      is_final: false,
+      is_final:      false,
     });
 
     res.status(201).json({ success: true, message: 'Jadwal berhasil dibuat', data: schedule });
@@ -69,6 +69,9 @@ export const deleteScheduleController = async (req, res) => {
     const schedule = await getScheduleById(req.params.id);
     if (!schedule) return res.status(404).json({ success: false, message: 'Jadwal tidak ditemukan' });
 
+    if (schedule.is_final)
+      return res.status(400).json({ success: false, message: 'Jadwal final tidak dapat dihapus' });
+
     await deleteSchedule(req.params.id);
     res.json({ success: true, message: 'Jadwal berhasil dihapus' });
   } catch (err) {
@@ -79,12 +82,26 @@ export const deleteScheduleController = async (req, res) => {
 export const validateScheduleController = async (req, res) => {
   try {
     const schedule = await getScheduleById(req.params.id);
-    if (!schedule) return res.status(404).json({ success: false, message: 'Jadwal tidak ditemukan' });
+    if (!schedule)
+      return res.status(404).json({ success: false, message: 'Jadwal tidak ditemukan' });
     if (schedule.is_final)
       return res.status(400).json({ success: false, message: 'Jadwal sudah final' });
 
-    const updated = await validateSchedule(req.params.id, req.user?.id);
-    res.json({ success: true, message: 'Jadwal berhasil divalidasi menjadi final', data: updated });
+    // field dari JWT payload adalah userId
+    const userId = req.user?.userId || null;
+
+    if (!userId)
+      return res.status(401).json({
+        success: false,
+        message: 'User tidak teridentifikasi, silakan login ulang',
+      });
+
+    const updated = await validateSchedule(req.params.id, userId);
+    res.json({
+      success: true,
+      message: 'Jadwal berhasil divalidasi menjadi final',
+      data:    updated,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -93,14 +110,25 @@ export const validateScheduleController = async (req, res) => {
 export const reviseScheduleController = async (req, res) => {
   try {
     const schedule = await getScheduleById(req.params.id);
-    if (!schedule) return res.status(404).json({ success: false, message: 'Jadwal tidak ditemukan' });
+    if (!schedule)
+      return res.status(404).json({ success: false, message: 'Jadwal tidak ditemukan' });
+
+    if (!schedule.is_final)
+      return res.status(400).json({
+        success: false,
+        message: 'Hanya jadwal final yang bisa diajukan revisi',
+      });
 
     const { revision_note } = req.body;
     if (!revision_note?.trim())
       return res.status(400).json({ success: false, message: 'Catatan revisi wajib diisi' });
 
     const updated = await reviseSchedule(req.params.id, revision_note.trim());
-    res.json({ success: true, message: 'Jadwal diajukan untuk revisi', data: updated });
+    res.json({
+      success: true,
+      message: 'Jadwal diajukan untuk revisi',
+      data:    updated,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

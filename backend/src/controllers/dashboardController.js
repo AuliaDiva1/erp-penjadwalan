@@ -1,6 +1,9 @@
 import { success, error } from '../utils/response.js';
 import * as DashboardModel from '../models/dashboardModel.js';
 
+const PYTHON_API = process.env.PYTHON_API;
+
+// ── ADMIN STATS ───────────────────────────────────────
 export const getAdminStats = async (req, res) => {
   try {
     const [userStats, machineStats, stokKritisCount, jobStats, logHariIni] =
@@ -25,6 +28,7 @@ export const getAdminStats = async (req, res) => {
   }
 };
 
+// ── STOK KRITIS ───────────────────────────────────────
 export const getStokKritisDetail = async (req, res) => {
   try {
     const data = await DashboardModel.getStokKritis();
@@ -35,6 +39,7 @@ export const getStokKritisDetail = async (req, res) => {
   }
 };
 
+// ── JADWAL DETAIL ─────────────────────────────────────
 export const getJadwalDetail = async (req, res) => {
   try {
     const [recentJobs, inProgressJobs] = await Promise.all([
@@ -52,10 +57,11 @@ export const getJadwalDetail = async (req, res) => {
   }
 };
 
+// ── LOG AKTIVITAS ─────────────────────────────────────
 export const getLogAktivitas = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
-    const logs = await DashboardModel.getActivityLogs(limit);
+    const logs  = await DashboardModel.getActivityLogs(limit);
     return success(res, 'Berhasil mengambil log aktivitas', logs);
   } catch (err) {
     console.error('getLogAktivitas error:', err);
@@ -63,6 +69,7 @@ export const getLogAktivitas = async (req, res) => {
   }
 };
 
+// ── LAPORAN MODUL ─────────────────────────────────────
 export const getLaporanModul = async (req, res) => {
   try {
     const data = await DashboardModel.getAllModuleSummary();
@@ -73,12 +80,53 @@ export const getLaporanModul = async (req, res) => {
   }
 };
 
+// ── MODEL RF - Ambil dari Flask ───────────────────────
 export const getModelRF = async (req, res) => {
   try {
-    const data = await DashboardModel.getRFModelInfo();
-    return success(res, 'Berhasil mengambil info model RF', data);
+    if (!PYTHON_API) {
+      return success(res, 'Python service belum dikonfigurasi', null);
+    }
+
+    const response = await fetch(`${PYTHON_API}/model/info`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Flask responded with ${response.status}`);
+    }
+
+    const data = await response.json();
+    return success(res, 'Berhasil mengambil info model RF', data.data);
   } catch (err) {
     console.error('getModelRF error:', err);
-    return error(res, 'Gagal mengambil info model RF');
+    return success(res, 'Model RF belum tersedia', null);
+  }
+};
+
+// ── RESET MODEL RF ────────────────────────────────────
+export const resetModelRF = async (req, res) => {
+  try {
+    if (!PYTHON_API) {
+      return error(res, 'Python service belum dikonfigurasi');
+    }
+
+    const response = await fetch(`${PYTHON_API}/model/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(60000),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      return success(res, 'Model RF berhasil direset dan dilatih ulang', data.metadata);
+    }
+
+    return error(res, data.message || 'Gagal mereset model RF');
+  } catch (err) {
+    console.error('resetModelRF error:', err);
+    return error(res, 'Gagal mereset model RF: ' + err.message);
   }
 };

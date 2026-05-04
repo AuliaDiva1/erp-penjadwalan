@@ -6,6 +6,7 @@ import {
   getLogAktivitas,
   getLaporanModul,
   getModelRF,
+  resetModelRF,
 } from '../controllers/dashboardController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 
@@ -18,5 +19,7 @@ router.get('/admin/jadwal',       authenticate, getJadwalDetail);
 router.get('/admin/log',          authenticate, getLogAktivitas);
 router.get('/admin/modul',        authenticate, getLaporanModul);
 router.get('/admin/model-rf',     authenticate, getModelRF);
+router.get('/admin/model-rf',     authenticate, getModelRF);
+router.post('/admin/model-reset', authenticate, resetModelRF);
 
 export default router;
