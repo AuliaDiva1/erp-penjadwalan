@@ -87,7 +87,6 @@ export const createJobController = async (req, res) => {
     if (!machine_availability || machine_availability < 80 || machine_availability > 99)
       return res.status(400).json({ success: false, message: 'Machine availability harus antara 80-99%' });
 
-    // cek stok bahan baku
     if (material_id && material_used) {
       const material = await db('materials').where({ id: material_id }).first();
       if (!material)
@@ -101,7 +100,7 @@ export const createJobController = async (req, res) => {
         if (!alreadyPending) {
           await db('procurements').insert({
             material_id,
-            user_id:                  req.user?.userId || null,  // ← fix
+            user_id:                  req.user?.userId || null,
             required_qty:             material_used - material.current_stock,
             current_stock_at_trigger: material.current_stock,
             status:                   'pending',
@@ -121,7 +120,7 @@ export const createJobController = async (req, res) => {
     const deadlineCustomerFormatted = formatDateToMySQL(deadline_customer);
 
     const job = await Model.addJob({
-      user_id:            req.user?.userId || null,  // ← fix
+      user_id:            req.user?.userId || null,
       machine_id:         machine_id       || null,
       material_id:        material_id      || null,
       operation_type,
@@ -202,24 +201,32 @@ export const updateJobActualController = async (req, res) => {
     if (job_status && !validStatus.includes(job_status))
       return res.status(400).json({ success: false, message: 'Status tidak valid' });
 
-    if (actual_start && actual_end) {
-      const start = new Date(actual_start);
-      const end   = new Date(actual_end);
+    // ── PERBAIKAN: jangan timpa field yang tidak dikirim ──
+    // kalau field tidak ada di body (undefined), pakai nilai lama dari DB
+    const finalStart = actual_start !== undefined
+      ? formatDateToMySQL(actual_start)
+      : job.actual_start || null;
+
+    const finalEnd = actual_end !== undefined
+      ? formatDateToMySQL(actual_end)
+      : job.actual_end || null;
+    // ──────────────────────────────────────────────────────
+
+    if (finalStart && finalEnd) {
+      const start = new Date(finalStart);
+      const end   = new Date(finalEnd);
       if (end < start)
         return res.status(400).json({ success: false, message: 'Actual End tidak boleh sebelum Actual Start' });
     }
 
     let deadline_warning = false;
-    if (actual_end && job.scheduled_end) {
-      deadline_warning = new Date(actual_end) > new Date(job.scheduled_end);
+    if (finalEnd && job.scheduled_end) {
+      deadline_warning = new Date(finalEnd) > new Date(job.scheduled_end);
     }
 
-    const actualStartFormatted = formatDateToMySQL(actual_start);
-    const actualEndFormatted   = formatDateToMySQL(actual_end);
-
     await db('jobs').where({ id }).update({
-      actual_start:     actualStartFormatted,
-      actual_end:       actualEndFormatted,
+      actual_start:     finalStart,
+      actual_end:       finalEnd,
       job_status:       job_status || job.job_status,
       deadline_warning: deadline_warning,
       updated_at:       db.fn.now(),
@@ -235,7 +242,6 @@ export const updateJobActualController = async (req, res) => {
           updated_at:    db.fn.now(),
         });
 
-        // trigger notifikasi pengadaan kalau stok di bawah minimum
         if (newStock <= material.min_stock_level) {
           const alreadyPending = await db('procurements')
             .where({ material_id: job.material_id, status: 'pending' })
@@ -244,7 +250,7 @@ export const updateJobActualController = async (req, res) => {
           if (!alreadyPending) {
             await db('procurements').insert({
               material_id:              job.material_id,
-              user_id:                  req.user?.userId || null,  // ← fix
+              user_id:                  req.user?.userId || null,
               required_qty:             material.min_stock_level - newStock + 10,
               current_stock_at_trigger: newStock,
               status:                   'pending',

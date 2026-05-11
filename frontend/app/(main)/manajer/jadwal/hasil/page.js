@@ -77,7 +77,6 @@ export default function HasilAlgoritmaPage() {
           if (data.success) {
             toast.current.show({ severity: 'success', summary: 'Berhasil', detail: 'Jadwal berhasil difinalisasi' });
             await fetchSchedules();
-            // update selectedSchedule dengan data terbaru
             setSelectedSchedule(prev => ({ ...prev, status_jadwal: 'final', is_final: true }));
           } else {
             toast.current.show({ severity: 'error', summary: 'Gagal', detail: data.message });
@@ -93,11 +92,8 @@ export default function HasilAlgoritmaPage() {
 
   useEffect(() => { fetchSchedules(); }, []);
 
-  useEffect(() => {
-    if (schedules.length > 0 && !selectedSchedule) {
-      fetchJobsBySchedule(schedules[0]);
-    }
-  }, [schedules]);
+  // Tidak ada auto-select — user harus pilih sendiri
+  // useEffect dihapus agar tidak default ke jadwal pertama
 
   const formatDate = (val) =>
     val ? new Date(val).toLocaleString('id-ID', {
@@ -149,8 +145,8 @@ export default function HasilAlgoritmaPage() {
   };
 
   const machineStats = jobs.reduce((acc, j) => {
-    const m = j.machine_id || '-';
-    if (!acc[m]) acc[m] = { machine: m, name: j.machine_name || m, count: 0, total_duration: 0 };
+    const m = j.assigned_machine_id || '-';
+    if (!acc[m]) acc[m] = { machine: m, name: j.assigned_machine_name || m, count: 0, total_duration: 0 };
     acc[m].count++;
     acc[m].total_duration += j.processing_time || 0;
     return acc;
@@ -189,8 +185,8 @@ export default function HasilAlgoritmaPage() {
 
   const machineTemplate = (row) => (
     <div>
-      <div className="font-semibold text-sm">{row.machine_id || '-'}</div>
-      <div className="text-xs text-color-secondary">{row.machine_name || '-'}</div>
+      <div className="font-semibold text-sm">{row.assigned_machine_id || '-'}</div>
+      <div className="text-xs text-color-secondary">{row.assigned_machine_name || '-'}</div>
     </div>
   );
 
@@ -234,8 +230,9 @@ export default function HasilAlgoritmaPage() {
             options={schedules}
             onChange={(e) => fetchJobsBySchedule(e.value)}
             optionLabel="schedule_code"
-            placeholder="-- Pilih Jadwal --"
-            style={{ width: '260px' }}
+            placeholder="-- Pilih Jadwal untuk Ditampilkan --"
+            style={{ width: '280px' }}
+            emptyMessage="Belum ada jadwal tersedia"
             itemTemplate={(opt) => (
               <div className="flex justify-content-between align-items-center gap-3">
                 <span className="font-semibold">{opt.schedule_code}</span>
@@ -260,7 +257,6 @@ export default function HasilAlgoritmaPage() {
               <span className="text-sm">Jobs: <b>{selectedSchedule.total_jobs}</b></span>
               <span className="text-sm">Mesin: <b>{selectedSchedule.total_machines}</b></span>
 
-              {/* TOMBOL FINALISASI — hanya muncul kalau status draft */}
               {selectedSchedule.status_jadwal === 'draft' && (
                 <Button
                   label={finalizing ? 'Memfinalisasi...' : 'Finalisasi Jadwal'}
@@ -271,20 +267,46 @@ export default function HasilAlgoritmaPage() {
                   disabled={finalizing}
                 />
               )}
-
               {selectedSchedule.status_jadwal === 'final' && (
                 <div className="flex align-items-center gap-1 text-green-600 text-sm font-semibold">
                   <i className="pi pi-lock" />
                   <span>Jadwal sudah terkunci (Final)</span>
                 </div>
               )}
-
               {selectedSchedule.status_jadwal === 'revised' && (
                 <div className="flex align-items-center gap-1 text-orange-500 text-sm font-semibold">
                   <i className="pi pi-history" />
                   <span>Jadwal ini telah direvisi</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Keterangan pipeline — selalu tampil */}
+          {!selectedSchedule && (
+            <div className="mt-3 w-full">
+              <div className="p-3 border-round" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                <p className="m-0 mb-2 font-semibold text-sm">Cara kerja Pipeline:</p>
+                <div className="flex flex-column gap-2">
+                  {[
+                    { step: '1', color: '#6366f1', label: 'Random Forest', desc: 'Memprediksi durasi aktual dan deadline tiap job berdasarkan pola historis dataset.' },
+                    { step: '2', color: '#f59e0b', label: 'Fuzzy Mamdani', desc: 'Menghitung skor prioritas job (0–100) menggunakan 27 rules IF-THEN dari tiga variabel input: Processing Time, Energy Consumption, dan Machine Availability.' },
+                    { step: '3', color: '#22c55e', label: 'CCEA',          desc: 'Mengalokasikan job ke mesin secara optimal untuk meminimalkan makespan (total waktu penyelesaian seluruh job).' },
+                  ].map((s) => (
+                    <div key={s.step} className="flex align-items-start gap-2">
+                      <div
+                        className="flex align-items-center justify-content-center border-round-sm font-bold text-white text-xs flex-shrink-0"
+                        style={{ width: 20, height: 20, background: s.color, marginTop: 2 }}
+                      >
+                        {s.step}
+                      </div>
+                      <span className="text-sm">
+                        <b>{s.label}</b> — {s.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -318,15 +340,15 @@ export default function HasilAlgoritmaPage() {
             ))}
           </div>
 
-          <div className="grid mb-4">
-            {/* DISTRIBUSI MESIN */}
-            <div className="col-12 lg:col-4">
-              <div className="card h-full">
-                <h3 className="mt-0 mb-3">Distribusi Beban Mesin</h3>
-                {Object.values(machineStats).map((m, i) => (
-                  <div key={i} className="mb-3">
+          {/* DISTRIBUSI MESIN */}
+          <div className="card mb-4">
+            <h3 className="mt-0 mb-3">Distribusi Beban Mesin</h3>
+            <div className="grid">
+              {Object.values(machineStats).map((m, i) => (
+                <div key={i} className="col-12 md:col-6 lg:col-4">
+                  <div className="mb-3">
                     <div className="flex justify-content-between align-items-center mb-1">
-                      <span className="font-semibold text-sm">{m.machine}</span>
+                      <span className="font-semibold text-sm">{m.name || m.machine}</span>
                       <span className="text-xs text-color-secondary">{m.count} jobs | {m.total_duration} mnt</span>
                     </div>
                     <ProgressBar
@@ -335,40 +357,8 @@ export default function HasilAlgoritmaPage() {
                       color="#6366f1"
                     />
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* INFO ALGORITMA */}
-            <div className="col-12 lg:col-8">
-              <div className="card h-full">
-                <h3 className="mt-0 mb-3">Ringkasan Algoritma</h3>
-                <div className="grid">
-                  {[
-                    { label: 'Step 1: Random Forest', icon: 'pi-chart-line', color: '#6366f1',
-                      items: ['Prediksi durasi aktual tiap job', 'Estimasi deadline berdasarkan historis', 'MAE: 0.03 menit | R²: 100%'] },
-                    { label: 'Step 2: Fuzzy Mamdani', icon: 'pi-sliders-h', color: '#f59e0b',
-                      items: ['27 rules inferensi IF-THEN', 'Input: Processing Time, Energy, Availability', 'Output: Skor prioritas 0-100'] },
-                    { label: 'Step 3: CCEA', icon: 'pi-cog', color: '#22c55e',
-                      items: [`Makespan: ${selectedSchedule.makespan} menit`, `${selectedSchedule.total_jobs} jobs → ${selectedSchedule.total_machines} mesin`, 'Elitisme + Seleksi Turnamen'] },
-                  ].map((s, i) => (
-                    <div key={i} className="col-12 md:col-4">
-                      <div className="p-3 border-round h-full" style={{ border: `2px solid ${s.color}20`, background: `${s.color}08` }}>
-                        <div className="flex align-items-center gap-2 mb-2">
-                          <i className={`pi ${s.icon}`} style={{ color: s.color }} />
-                          <span className="font-semibold text-sm">{s.label}</span>
-                        </div>
-                        {s.items.map((item, j) => (
-                          <div key={j} className="flex align-items-start gap-1 mb-1">
-                            <i className="pi pi-check text-xs mt-1" style={{ color: s.color }} />
-                            <span className="text-xs text-color-secondary">{item}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
                 </div>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -432,7 +422,7 @@ export default function HasilAlgoritmaPage() {
               {[
                 { label: 'Job ID',               value: selectedJob.job_id },
                 { label: 'Operation Type',        value: selectedJob.operation_type },
-                { label: 'Mesin',                 value: `${selectedJob.machine_id || '-'} - ${selectedJob.machine_name || '-'}` },
+                { label: 'Mesin',                 value: `${selectedJob.assigned_machine_id || '-'} - ${selectedJob.assigned_machine_name || '-'}` },
                 { label: 'Processing Time',       value: `${selectedJob.processing_time} menit` },
                 { label: 'Energy Consumption',    value: `${selectedJob.energy_consumption} kWh` },
                 { label: 'Machine Availability',  value: `${selectedJob.machine_availability}%` },

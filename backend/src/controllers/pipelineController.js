@@ -114,15 +114,15 @@ export const runPipeline = async (req, res) => {
     const baseTime = new Date();
     baseTime.setSeconds(0, 0);
 
-    // jadwal final sebelumnya → revised
-    await db('schedules')
-      .where({ status_jadwal: 'final' })
-      .update({
-        status_jadwal:  'revised',
-        is_final:       false,
-        revision_count: db.raw('revision_count + 1'),
-        updated_at:     db.fn.now(),
-      });
+    // DIHAPUS: jadwal final sebelumnya TIDAK lagi otomatis di-revised
+    // await db('schedules')
+    //   .where({ status_jadwal: 'final' })
+    //   .update({
+    //     status_jadwal:  'revised',
+    //     is_final:       false,
+    //     revision_count: db.raw('revision_count + 1'),
+    //     updated_at:     db.fn.now(),
+    //   });
 
     const scheduleCode  = `SCH-${Date.now()}`;
     const totalMakespan = pipelineResult.makespan;
@@ -240,8 +240,9 @@ export const getPipelineResult = async (req, res) => {
         'j.priority_score',
         'j.optimization_category',
         'j.job_status',
-        'm.machine_id',
-        'm.machine_name',
+        'j.assigned_machine_id',
+        'm.machine_id as assigned_machine_code',
+        'm.machine_name as assigned_machine_name',
       )
       .orderBy('j.scheduled_start', 'asc');
 

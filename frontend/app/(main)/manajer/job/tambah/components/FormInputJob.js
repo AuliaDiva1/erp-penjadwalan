@@ -10,22 +10,20 @@ import { useRouter } from 'next/navigation';
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const OPERATION_TYPES = [
-  { label: 'Additive Manufacturing', value: 'Additive'  },
-  { label: 'Milling',                value: 'Milling'   },
-  { label: 'Grinding',               value: 'Grinding'  },
-  { label: 'Lathe',                  value: 'Lathe'     },
-  { label: 'Drilling',               value: 'Drilling'  },
+  { label: 'Additive Manufacturing', value: 'Additive' },
+  { label: 'Milling',                value: 'Milling'  },
+  { label: 'Grinding',               value: 'Grinding' },
+  { label: 'Lathe',                  value: 'Lathe'    },
+  { label: 'Drilling',               value: 'Drilling' },
 ];
 
 const defaultForm = {
   operation_type:       null,
-  machine_id:           null,
   material_id:          null,
   processing_time:      null,
   energy_consumption:   null,
   machine_availability: null,
   deadline_customer:    null,
-  scheduled_start:      null,
   material_used:        null,
   is_urgent:            false,
 };
@@ -33,7 +31,6 @@ const defaultForm = {
 const FormInputJob = () => {
   const toast      = useRef(null);
   const router     = useRouter();
-  const [machines,     setMachines]     = useState([]);
   const [materials,    setMaterials]    = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [saving,       setSaving]       = useState(false);
@@ -45,23 +42,10 @@ const FormInputJob = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [resMachines, resMaterials] = await Promise.all([
-        fetch(`${BASE_URL}/machines`,  { headers: { Authorization: `Bearer ${getToken()}` } }),
-        fetch(`${BASE_URL}/materials`, { headers: { Authorization: `Bearer ${getToken()}` } }),
-      ]);
-      const dataMachines  = await resMachines.json();
+      const resMaterials = await fetch(`${BASE_URL}/materials`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
       const dataMaterials = await resMaterials.json();
-
-      if (dataMachines.success) {
-        setMachines(dataMachines.data
-          .filter(m => m.status === 'active')
-          .map(m => ({
-            label: `${m.machine_id} - ${m.machine_name}`,
-            value: m.machine_id,  // ← pakai machine_id string bukan id integer
-            data:  m,
-          }))
-        );
-      }
       if (dataMaterials.success) {
         setMaterials(dataMaterials.data.map(m => ({
           label: `${m.kode_bahan_baku} - ${m.material_name} (stok: ${m.current_stock} ${m.nama_satuan})`,
@@ -80,15 +64,6 @@ const FormInputJob = () => {
 
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
-  const handleMachineChange = (machineId) => {
-    set('machine_id', machineId);
-    const selected = machines.find(m => m.value === machineId);
-    if (selected?.data) {
-      set('energy_consumption',   selected.data.energy_rate          || null);
-      set('machine_availability', selected.data.machine_availability || null);
-    }
-  };
-
   const handleMaterialChange = (materialId) => {
     set('material_id', materialId);
     setStockWarning(null);
@@ -101,10 +76,6 @@ const FormInputJob = () => {
   const validate = () => {
     if (!form.operation_type) {
       toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Operation type wajib dipilih' });
-      return false;
-    }
-    if (!form.machine_id) {
-      toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Mesin wajib dipilih' });
       return false;
     }
     if (!form.processing_time) {
@@ -130,13 +101,13 @@ const FormInputJob = () => {
     if (!validate()) return;
     setSaving(true);
     try {
-      const res  = await fetch(`${BASE_URL}/jobs`, {
+      const res = await fetch(`${BASE_URL}/jobs`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body:    JSON.stringify({
           ...form,
+          machine_id:        null, // ditentukan oleh pipeline CCEA
           deadline_customer: form.deadline_customer ? form.deadline_customer.toISOString() : null,
-          scheduled_start:   form.scheduled_start   ? form.scheduled_start.toISOString()   : null,
         }),
       });
       const data = await res.json();
@@ -170,8 +141,6 @@ const FormInputJob = () => {
     setStockWarning(null);
   };
 
-  const selectedMachine = machines.find(m => m.value === form.machine_id)?.data;
-
   return (
     <>
       <Toast ref={toast} />
@@ -183,6 +152,7 @@ const FormInputJob = () => {
 
             <div className="formgrid grid">
 
+              {/* Operation Type */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">
                   Operation Type <span className="text-red-500">*</span>
@@ -196,27 +166,7 @@ const FormInputJob = () => {
                 />
               </div>
 
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">
-                  Mesin <span className="text-red-500">*</span>
-                </label>
-                <Dropdown
-                  value={form.machine_id}
-                  options={machines}
-                  onChange={(e) => handleMachineChange(e.value)}
-                  placeholder="-- Pilih Mesin --"
-                  filter
-                  style={{ width: '100%' }}
-                  loading={loading}
-                />
-                {selectedMachine && (
-                  <small className="text-color-secondary">
-                    Energy Rate: {selectedMachine.energy_rate ?? '-'} kWh |
-                    Availability: {selectedMachine.machine_availability ?? '-'}%
-                  </small>
-                )}
-              </div>
-
+              {/* Bahan Baku */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">Bahan Baku</label>
                 <Dropdown
@@ -233,6 +183,7 @@ const FormInputJob = () => {
                 )}
               </div>
 
+              {/* Material Used */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">Material Used</label>
                 <InputNumber
@@ -245,6 +196,7 @@ const FormInputJob = () => {
                 />
               </div>
 
+              {/* Processing Time */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">
                   Processing Time (menit) <span className="text-red-500">*</span>
@@ -260,6 +212,7 @@ const FormInputJob = () => {
                 <small className="text-color-secondary">Min: 20 | Max: 120 menit</small>
               </div>
 
+              {/* Energy Consumption */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">
                   Energy Consumption (kWh) <span className="text-red-500">*</span>
@@ -273,9 +226,10 @@ const FormInputJob = () => {
                   suffix=" kWh"
                   style={{ width: '100%' }}
                 />
-                <small className="text-color-secondary">Auto-fill dari mesin | Range: 2.01-14.98</small>
+                <small className="text-color-secondary">Range: 2.01 – 14.98 kWh</small>
               </div>
 
+              {/* Machine Availability */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">
                   Machine Availability (%) <span className="text-red-500">*</span>
@@ -287,9 +241,10 @@ const FormInputJob = () => {
                   suffix="%"
                   style={{ width: '100%' }}
                 />
-                <small className="text-color-secondary">Auto-fill dari mesin | Range: 80-99%</small>
+                <small className="text-color-secondary">Range: 80 – 99%</small>
               </div>
 
+              {/* Deadline Customer */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">Deadline Customer</label>
                 <Calendar
@@ -304,17 +259,27 @@ const FormInputJob = () => {
                 <small className="text-color-secondary">Opsional — sistem prediksi otomatis jika kosong</small>
               </div>
 
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">Rencana Mulai</label>
-                <Calendar
-                  value={form.scheduled_start}
-                  onChange={(e) => set('scheduled_start', e.value)}
-                  showTime hourFormat="24"
-                  showIcon
-                  minDate={new Date()}
-                  placeholder="Pilih waktu mulai"
-                  style={{ width: '100%' }}
-                />
+              {/* Is Urgent */}
+              <div className="field col-12 md:col-6 flex align-items-center gap-3 mt-4">
+                <label className="font-bold">Urgent?</label>
+                <div className="flex gap-3">
+                  <label className="flex align-items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={form.is_urgent === true}
+                      onChange={() => set('is_urgent', true)}
+                    />
+                    Ya
+                  </label>
+                  <label className="flex align-items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={form.is_urgent === false}
+                      onChange={() => set('is_urgent', false)}
+                    />
+                    Tidak
+                  </label>
+                </div>
               </div>
 
             </div>
@@ -344,10 +309,11 @@ const FormInputJob = () => {
             <h3 className="mt-0 mb-3">Preview Job</h3>
             {[
               { label: 'Operation Type',  value: form.operation_type || '-' },
-              { label: 'Mesin',           value: machines.find(m => m.value === form.machine_id)?.label || '-' },
+              { label: 'Mesin',           value: 'Ditentukan otomatis oleh CCEA' },
               { label: 'Processing Time', value: form.processing_time ? `${form.processing_time} menit` : '-' },
               { label: 'Energy',          value: form.energy_consumption ? `${form.energy_consumption} kWh` : '-' },
               { label: 'Availability',    value: form.machine_availability ? `${form.machine_availability}%` : '-' },
+              { label: 'Urgent',          value: form.is_urgent ? '⚡ Ya' : 'Tidak' },
               { label: 'Deadline',        value: form.deadline_customer ? new Date(form.deadline_customer).toLocaleString('id-ID') : 'Prediksi otomatis' },
               { label: 'Status Awal',     value: 'Pending' },
             ].map((item, i) => (
@@ -363,7 +329,7 @@ const FormInputJob = () => {
             <h3 className="mt-0 mb-3">Panduan Pengisian</h3>
             {[
               { icon: 'pi-star',     color: '#6366f1', text: 'Operation Type menentukan bobot prioritas Fuzzy Mamdani' },
-              { icon: 'pi-cog',      color: '#f59e0b', text: 'Pilih mesin aktif, energy dan availability auto-fill' },
+              { icon: 'pi-cog',      color: '#f59e0b', text: 'Mesin ditentukan otomatis oleh algoritma CCEA saat pipeline dijalankan' },
               { icon: 'pi-clock',    color: '#22c55e', text: 'Processing time harus 20-120 menit sesuai dataset' },
               { icon: 'pi-calendar', color: '#3b82f6', text: 'Deadline opsional, sistem prediksi otomatis via Random Forest' },
               { icon: 'pi-play',     color: '#ef4444', text: 'Setelah disimpan, jalankan pipeline untuk mendapat jadwal optimal' },

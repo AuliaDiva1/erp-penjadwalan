@@ -55,8 +55,6 @@ export default function RiwayatPesananPage() {
   const router = useRouter();
 
   const [jobs,         setJobs]         = useState([]);
-  const [machines,     setMachines]     = useState([]);
-  const [allMachines,  setAllMachines]  = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [globalFilter, setGlobalFilter] = useState('');
   const [filterStatus, setFilterStatus] = useState(null);
@@ -79,27 +77,11 @@ export default function RiwayatPesananPage() {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const [resJobs, resMachines] = await Promise.all([
-        fetch(`${BASE_URL}/jobs`,     { headers: { Authorization: `Bearer ${getToken()}` } }),
-        fetch(`${BASE_URL}/machines`, { headers: { Authorization: `Bearer ${getToken()}` } }),
-      ]);
-      const dataJobs     = await resJobs.json();
-      const dataMachines = await resMachines.json();
-
+      const resJobs = await fetch(`${BASE_URL}/jobs`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const dataJobs = await resJobs.json();
       if (dataJobs.success) setJobs(dataJobs.data);
-
-      if (dataMachines.success) {
-        setAllMachines(dataMachines.data);
-        setMachines(
-          dataMachines.data
-            .filter(m => m.status === 'active')
-            .map(m => ({
-              label: `${m.machine_id} - ${m.machine_name}`,
-              value: m.machine_id,
-              data:  m,
-            }))
-        );
-      }
     } catch {
       toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data' });
     } finally {
@@ -127,23 +109,12 @@ export default function RiwayatPesananPage() {
 
   const handleEdit = (job) => {
     setSelectedJob(job);
-    const existingMachine = allMachines.find(m => m.machine_id === job.machine_id);
-    const machineOptions  = [...machines];
-    if (existingMachine && !machines.find(m => m.value === existingMachine.machine_id)) {
-      machineOptions.unshift({
-        label: `${existingMachine.machine_id} - ${existingMachine.machine_name} (inactive)`,
-        value: existingMachine.machine_id,
-        data:  existingMachine,
-      });
-    }
     setEditForm({
       operation_type:       job.operation_type,
-      machine_id:           job.machine_id,
       processing_time:      job.processing_time,
       energy_consumption:   job.energy_consumption,
       machine_availability: job.machine_availability,
       deadline:             job.deadline ? new Date(job.deadline) : null,
-      _machineOptions:      machineOptions,
     });
     setEditVisible(true);
   };
@@ -162,6 +133,7 @@ export default function RiwayatPesananPage() {
     try {
       const now  = new Date();
       const body = { job_status: newStatus };
+
       if (newStatus === 'In Progress') body.actual_start = toWIBMySQL(now);
       if (newStatus === 'Completed')   body.actual_end   = toWIBMySQL(now);
 
@@ -217,13 +189,12 @@ export default function RiwayatPesananPage() {
   const handleSaveEdit = async () => {
     setSaving(true);
     try {
-      const { _machineOptions, ...formData } = editForm;
       const res  = await fetch(`${BASE_URL}/jobs/${selectedJob.id}`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body:    JSON.stringify({
-          ...formData,
-          deadline: formData.deadline ? toWIBMySQL(formData.deadline) : null,
+          ...editForm,
+          deadline: editForm.deadline ? toWIBMySQL(editForm.deadline) : null,
         }),
       });
       const data = await res.json();
@@ -434,7 +405,11 @@ export default function RiwayatPesananPage() {
         >
           <Column field="job_id"          header="Job ID"         sortable style={{ fontWeight: 600, width: '100px' }} />
           <Column field="operation_type"  header="Operasi"        sortable style={{ width: '110px' }} />
-          <Column field="machine_name"    header="Mesin"          body={(r) => r.machine_name || r.machine_id || '-'} />
+          <Column
+            field="assigned_machine_name"
+            header="Mesin"
+            body={(r) => r.assigned_machine_name || r.machine_name || '-'}  // ← FIX
+          />
           <Column field="processing_time" header="Proc Time"      body={(r) => `${r.processing_time} mnt`} sortable style={{ width: '100px' }} />
           <Column field="job_status"      header="Status"         body={statusTemplate} sortable style={{ width: '110px' }} />
           <Column field="scheduled_start" header="Jadwal Mulai"   body={(r) => formatDate(r.scheduled_start)} sortable />
@@ -451,6 +426,7 @@ export default function RiwayatPesananPage() {
         job={selectedJob}
       />
 
+      {/* DIALOG EDIT — tanpa field Mesin, sesuai pipeline CCEA */}
       <Dialog
         header={`Edit Job: ${selectedJob?.job_id}`}
         visible={editVisible}
@@ -468,15 +444,17 @@ export default function RiwayatPesananPage() {
               style={{ width: '100%' }}
             />
           </div>
+
+          {/* Mesin: read-only, dari hasil pipeline */}
           <div className="field mb-3">
-            <label className="font-bold block mb-2">Mesin</label>
-            <Dropdown
-              value={editForm.machine_id}
-              options={editForm._machineOptions || machines}
-              onChange={(e) => setEditForm(p => ({ ...p, machine_id: e.value }))}
-              filter style={{ width: '100%' }}
+            <label className="font-bold block mb-2">Mesin (dari Pipeline CCEA)</label>
+            <InputText
+              value={selectedJob?.assigned_machine_name || selectedJob?.assigned_machine_id || 'Belum dijadwalkan'}
+              disabled
+              style={{ width: '100%' }}
             />
           </div>
+
           <div className="formgrid grid">
             <div className="field col-6">
               <label className="font-bold block mb-2">Processing Time (mnt)</label>

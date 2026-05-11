@@ -35,7 +35,7 @@ export default function GanttChartPage() {
   const toast     = useRef(null);
   const scrollRef = useRef(null);
 
-  const [allJobs,          setAllJobs]          = useState([]); // semua job dari semua jadwal
+  const [allJobs,          setAllJobs]          = useState([]);
   const [schedules,        setSchedules]        = useState([]);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [loading,          setLoading]          = useState(false);
@@ -52,23 +52,8 @@ export default function GanttChartPage() {
     return () => clearInterval(iv);
   }, []);
 
-  // fetch semua jadwal
-  const fetchSchedules = async () => {
-    setLoading(true);
-    try {
-      const res  = await fetch(`${BASE_URL}/pipeline/schedules`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
-      if (data.success) setSchedules(data.data);
-    } catch {
-      toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat jadwal' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // fetch jobs dari satu jadwal
+  // PATCH 1: tambah _machineId dan _machineName
   const fetchJobsBySchedule = async (schedule) => {
     try {
       const res  = await fetch(`${BASE_URL}/pipeline/result/${schedule.id}`, {
@@ -78,11 +63,13 @@ export default function GanttChartPage() {
       if (data.success) {
         return (data.data.jobs || []).map(j => ({
           ...j,
-          _start:      toWIB(j.scheduled_start),
-          _end:        toWIB(j.scheduled_end),
-          _dl:         toWIB(j.deadline_predicted),
-          _scheduleId: schedule.id,
+          _start:        toWIB(j.scheduled_start),
+          _end:          toWIB(j.scheduled_end),
+          _dl:           toWIB(j.deadline_predicted),
+          _scheduleId:   schedule.id,
           _scheduleCode: schedule.schedule_code,
+          _machineId:    j.assigned_machine_code || j.machine_id   || '-',
+          _machineName:  j.assigned_machine_name || j.machine_name || '-',
         }));
       }
     } catch {}
@@ -101,10 +88,8 @@ export default function GanttChartPage() {
       if (!data.success) return;
       setSchedules(data.data);
 
-      // fetch jobs dari semua jadwal paralel
       const results = await Promise.all(data.data.map(s => fetchJobsBySchedule(s)));
-      const merged  = results.flat();
-      setAllJobs(merged);
+      setAllJobs(results.flat());
     } catch {
       toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data' });
     } finally {
@@ -112,31 +97,37 @@ export default function GanttChartPage() {
     }
   };
 
-  // saat jadwal dipilih → filter hanya jobs dari jadwal itu
+  // PATCH 2: jangan replace allJobs, cukup set selectedSchedule
+  // filteredJobs yang akan filter by _scheduleId
   const handleSelectSchedule = async (schedule) => {
     setSelectedSchedule(schedule);
-    setLoading(true);
-    try {
-      const jobs = await fetchJobsBySchedule(schedule);
-      setAllJobs(jobs);
-    } catch {
-      toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat jobs' });
-    } finally {
-      setLoading(false);
+    const alreadyLoaded = allJobs.some(j => j._scheduleId === schedule.id);
+    if (!alreadyLoaded) {
+      setLoading(true);
+      try {
+        const jobs = await fetchJobsBySchedule(schedule);
+        setAllJobs(prev => [...prev, ...jobs]); // tambah, jangan replace
+      } catch {
+        toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat jobs' });
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => { loadJobsForDate(filterDate); }, []);
 
-  // filter jobs berdasarkan tanggal
+  // PATCH 3: filter by _scheduleId kalau ada jadwal dipilih
   const filteredJobs = allJobs.filter(j => {
+    if (selectedSchedule) return j._scheduleId === selectedSchedule.id;
     if (!j._start || !filterDate) return true;
     const dayStart = new Date(filterDate.getFullYear(), filterDate.getMonth(), filterDate.getDate(), 0, 0, 0);
     const dayEnd   = new Date(filterDate.getFullYear(), filterDate.getMonth(), filterDate.getDate(), 23, 59, 59);
     return j._start <= dayEnd && j._end >= dayStart;
   });
 
-  const machines = [...new Set(filteredJobs.map(j => j.machine_id))].filter(Boolean).sort();
+  // PATCH 4: pakai _machineId bukan machine_id
+  const machines = [...new Set(filteredJobs.map(j => j._machineId))].filter(Boolean).sort();
 
   const minTime      = filteredJobs.length ? Math.min(...filteredJobs.map(j => j._start?.getTime()).filter(Boolean)) : new Date().setHours(7,0,0,0);
   const maxTime      = filteredJobs.length ? Math.max(...filteredJobs.map(j => j._end?.getTime()).filter(Boolean))   : new Date().setHours(18,0,0,0);
@@ -239,8 +230,9 @@ export default function GanttChartPage() {
     );
   };
 
+  // PATCH 4: pakai _machineId bukan machine_id
   const renderBars = (machineId) =>
-    filteredJobs.filter(j => j.machine_id === machineId).map(job => {
+    filteredJobs.filter(j => j._machineId === machineId).map(job => {
       if (!job._start || !job._end) return null;
       const left    = ((job._start.getTime() - minTime) / 60000) * zoom;
       const width   = Math.max(((job._end.getTime() - job._start.getTime()) / 60000) * zoom, 24);
@@ -333,13 +325,13 @@ export default function GanttChartPage() {
             />
           </div>
           {[
-            ['Jadwal',     tooltip.job._scheduleCode],
-            ['Operasi',    tooltip.job.operation_type],
-            ['Mesin',      tooltip.job.machine_name || tooltip.job.machine_id],
-            ['Mulai',      fmt(tooltip.job._start, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
-            ['Selesai',    fmt(tooltip.job._end,   { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
-            ['Durasi',     tooltip.job._start && tooltip.job._end ? `${Math.round((tooltip.job._end - tooltip.job._start) / 60000)} menit` : '-'],
-            ['Prioritas',  tooltip.job.priority_score?.toFixed(1) || '-'],
+            ['Jadwal',    tooltip.job._scheduleCode],
+            ['Operasi',   tooltip.job.operation_type],
+            ['Mesin',     tooltip.job._machineName],
+            ['Mulai',     fmt(tooltip.job._start, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
+            ['Selesai',   fmt(tooltip.job._end,   { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
+            ['Durasi',    tooltip.job._start && tooltip.job._end ? `${Math.round((tooltip.job._end - tooltip.job._start) / 60000)} menit` : '-'],
+            ['Prioritas', tooltip.job.priority_score?.toFixed(1) || '-'],
           ].map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 4, gap: 12 }}>
               <span style={{ color: 'var(--text-color-secondary)' }}>{k}</span>
@@ -370,7 +362,7 @@ export default function GanttChartPage() {
         <Button icon="pi pi-refresh" text onClick={() => loadJobsForDate(filterDate)} loading={loading} tooltip="Refresh" />
       </div>
 
-      {/* KONTROL — tanggal dulu, jadwal opsional */}
+      {/* KONTROL */}
       <div className="card mb-3">
         <div className="flex align-items-center gap-3 flex-wrap">
 
@@ -422,7 +414,7 @@ export default function GanttChartPage() {
               value={selectedSchedule}
               options={[{ schedule_code: '— Semua Jadwal —', id: null }, ...schedules]}
               onChange={(e) => {
-                if (!e.value.id) {
+                if (!e.value || !e.value.id) {
                   setSelectedSchedule(null);
                   loadJobsForDate(filterDate);
                 } else {
@@ -472,8 +464,8 @@ export default function GanttChartPage() {
           style={{ borderTop: '1px solid var(--surface-border)' }}>
           <span className="text-sm">
             Menampilkan <b>{filteredJobs.length}</b> job
-            {filterDate && <> pada <b>{fmt(filterDate, { day: '2-digit', month: 'long', year: 'numeric' })}</b></>}
-            {selectedSchedule && <> · Jadwal <b>{selectedSchedule.schedule_code}</b></>}
+            {!selectedSchedule && filterDate && <> pada <b>{fmt(filterDate, { day: '2-digit', month: 'long', year: 'numeric' })}</b></>}
+            {selectedSchedule && <> · Jadwal <b>{selectedSchedule.schedule_code}</b> (semua tanggal)</>}
           </span>
           {selectedSchedule && (
             <div className="flex gap-2 align-items-center">
@@ -489,9 +481,9 @@ export default function GanttChartPage() {
         <div className="flex align-items-center gap-3 flex-wrap">
           <span className="font-semibold text-sm">Keterangan:</span>
           {[
-            { label: 'Scheduled',   color: '#6366f1' },
-            { label: 'In Progress', color: '#3b82f6' },
-            { label: 'Completed',   color: '#22c55e' },
+            { label: 'Scheduled',      color: '#6366f1' },
+            { label: 'In Progress',    color: '#3b82f6' },
+            { label: 'Completed',      color: '#22c55e' },
             { label: 'Delayed/Failed', color: '#ef4444' },
           ].map(s => (
             <div key={s.label} className="flex align-items-center gap-1">
@@ -542,8 +534,9 @@ export default function GanttChartPage() {
                   background: mi % 2 === 0 ? 'var(--surface-ground)' : 'var(--surface-section)',
                 }}>
                   <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>{mid}</span>
+                  {/* PATCH 4: pakai _machineId */}
                   <span style={{ fontSize: '0.68rem', color: 'var(--text-color-secondary)' }}>
-                    {filteredJobs.filter(j => j.machine_id === mid).length} jobs
+                    {filteredJobs.filter(j => j._machineId === mid).length} jobs
                   </span>
                 </div>
               ))}

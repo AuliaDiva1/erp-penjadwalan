@@ -26,11 +26,11 @@ DEFAULT_MF = {
 }
 
 DEFAULT_BOBOT = {
-    'Additive': 1.20,
-    'Milling':  1.15,
-    'Grinding': 1.10,
-    'Lathe':    1.00,
-    'Drilling': 0.95,
+    'Lathe':    1.20,  # Prioritas Tinggi (Sering Delayed/Failed)
+    'Milling':  1.10,
+    'Grinding': 1.08,
+    'Additive': 0.98,
+    'Drilling': 0.95,  # Prioritas Rendah (Paling Stabil)
 }
 
 DEFAULT_RULES = []

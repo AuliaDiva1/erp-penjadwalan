@@ -7,20 +7,21 @@ import { Tag } from 'primereact/tag';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
+// Bobot sudah disesuaikan: Lathe tertinggi (1.20) dan Drilling terendah (0.95)
 const DEFAULT_BOBOT = {
-  Additive: 1.20,
-  Milling:  1.15,
-  Grinding: 1.10,
-  Lathe:    1.00,
+  Lathe:    1.20,
+  Milling:  1.10,
+  Grinding: 1.08,
+  Additive: 0.98,
   Drilling: 0.95,
 };
 
 const DESKRIPSI = {
-  Additive: 'Paling kompleks, setup panjang dan sulit diulang jika gagal',
-  Milling:  'Presisi tinggi, rentan terhadap variasi material',
-  Grinding: 'Memerlukan kontrol kecepatan dan pendinginan ketat',
-  Lathe:    'Operasi standar, relatif mudah dijadwal ulang',
-  Drilling: 'Paling sederhana, waktu proses pendek dan fleksibel',
+  Lathe:    'Prioritas Utama: Sering mengalami keterlambatan/kegagalan hasil produksi.',
+  Milling:  'Presisi tinggi, memerlukan pengawasan pada variasi material.',
+  Grinding: 'Memerlukan kontrol kecepatan dan pendinginan yang ketat.',
+  Additive: 'Proses kompleks namun tingkat keberhasilan relatif stabil.',
+  Drilling: 'Paling sederhana, waktu proses pendek dan sangat fleksibel.',
 };
 
 export default function FuzzyBobotPage() {
@@ -130,6 +131,7 @@ export default function FuzzyBobotPage() {
         </p>
 
         <div className="grid">
+          {/* Mapping data sesuai urutan bobot tertinggi */}
           {Object.entries(bobot).sort((a, b) => b[1] - a[1]).map(([op, val]) => (
             <div key={op} className="col-12 md:col-6 lg:col-4">
               <div
@@ -140,7 +142,9 @@ export default function FuzzyBobotPage() {
                   <span className="font-semibold text-lg">{op}</span>
                   <Tag value={`×${val.toFixed(2)}`} severity={getBobotSeverity(val)} />
                 </div>
-                <p className="text-color-secondary text-sm m-0 mb-3">{DESKRIPSI[op]}</p>
+                <p className="text-color-secondary text-sm m-0 mb-3" style={{ minHeight: '35px' }}>
+                  {DESKRIPSI[op]}
+                </p>
                 <InputNumber
                   value={val}
                   onValueChange={(e) => setBobot(prev => ({ ...prev, [op]: e.value }))}
@@ -149,7 +153,7 @@ export default function FuzzyBobotPage() {
                   maxFractionDigits={2}
                   min={0.5}
                   max={2.0}
-                  step={0.05}
+                  step={0.01}
                   showButtons
                   style={{ width: '100%' }}
                 />
@@ -159,6 +163,7 @@ export default function FuzzyBobotPage() {
           ))}
         </div>
 
+        {/* Visualisasi Urutan di Bagian Bawah */}
         <div className="p-3 border-round mt-2" style={{ background: 'var(--surface-ground)' }}>
           <div className="text-sm font-semibold mb-2">Urutan Prioritas Saat Ini:</div>
           <div className="flex gap-2 flex-wrap">
