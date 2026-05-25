@@ -3,17 +3,37 @@ import { db } from '../core/config/knex.js';
 
 const PYTHON_API = process.env.PYTHON_API;
 
+// ══════════════════════════════════════════════════════
+// Helper: Call Flask dengan error handling proper
+// ══════════════════════════════════════════════════════
 const callFlask = async (endpoint, method = 'GET', body = null) => {
   const options = {
     method,
     headers: { 'Content-Type': 'application/json' },
   };
   if (body) options.body = JSON.stringify(body);
-  const res  = await fetch(`${PYTHON_API}${endpoint}`, options);
-  const data = await res.json();
+
+  const res = await fetch(`${PYTHON_API}${endpoint}`, options);
+
+  // Kalau Flask return non-JSON (misal HTML error page), tangkap duluan
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Flask return non-JSON (status ${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  if (!res.ok) {
+    throw new Error(`Flask error ${res.status}: ${data?.message || text.slice(0, 200)}`);
+  }
+
   return data;
 };
 
+// ══════════════════════════════════════════════════════
+// Helper: Query DB
+// ══════════════════════════════════════════════════════
 const getJobsForPipeline = async () => {
   return db('jobs as j')
     .leftJoin('machines as m', 'j.machine_id', 'm.machine_id')
@@ -55,6 +75,7 @@ export const checkPythonHealth = async (req, res) => {
     return res.status(503).json({
       success: false,
       message: 'Python service tidak dapat diakses. Pastikan Flask sudah berjalan.',
+      detail: err.message,
     });
   }
 };
@@ -85,19 +106,45 @@ export const runPipeline = async (req, res) => {
       });
     }
 
+    // ── Validasi processing_time sebelum kirim ke Flask ──
+    const invalidJobs = jobs.filter(j => {
+      const pt = Number(j.processing_time);
+      return isNaN(pt) || pt <= 0;
+    });
+
+    if (invalidJobs.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Job berikut punya processing_time tidak valid (null/0/negatif): ${
+          invalidJobs.map(j => j.job_id).join(', ')
+        }`,
+      });
+    }
+
+    // ── Validasi machine_id tidak ada yang null ──
+    const machinesPayload = machines
+      .map(m => m.machine_id)
+      .filter(id => id != null && id !== '');
+
+    if (machinesPayload.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tidak ada machine_id valid di database.',
+      });
+    }
+
     const jobsPayload = jobs.map(j => ({
       job_id:               j.job_id,
-      operation_type:       j.operation_type,
+      operation_type:       j.operation_type       || null,
       processing_time:      Number(j.processing_time),
-      energy_consumption:   Number(j.energy_consumption),
-      machine_availability: Number(j.machine_availability),
-      deadline_customer:    j.deadline_customer || null,
-      is_urgent:            j.is_urgent         || false,
-      priority_override:    j.priority_override  || false,
+      energy_consumption:   Number(j.energy_consumption)   || 0,
+      machine_availability: Number(j.machine_availability) || 0,
+      deadline_customer:    j.deadline_customer    || null,
+      is_urgent:            Boolean(j.is_urgent),
+      priority_override:    Boolean(j.priority_override),
     }));
 
-    const machinesPayload = machines.map(m => m.machine_id);
-
+    // ── Kirim ke Flask ──
     const pipelineResult = await callFlask('/pipeline/run', 'POST', {
       jobs:     jobsPayload,
       machines: machinesPayload,
@@ -111,18 +158,17 @@ export const runPipeline = async (req, res) => {
       });
     }
 
+    // ── Pastikan schedule ada dan berisi data ──
+    const scheduleItems = pipelineResult.schedule ?? [];
+    if (scheduleItems.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Pipeline selesai tapi schedule kosong.',
+      });
+    }
+
     const baseTime = new Date();
     baseTime.setSeconds(0, 0);
-
-    // DIHAPUS: jadwal final sebelumnya TIDAK lagi otomatis di-revised
-    // await db('schedules')
-    //   .where({ status_jadwal: 'final' })
-    //   .update({
-    //     status_jadwal:  'revised',
-    //     is_final:       false,
-    //     revision_count: db.raw('revision_count + 1'),
-    //     updated_at:     db.fn.now(),
-    //   });
 
     const scheduleCode  = `SCH-${Date.now()}`;
     const totalMakespan = pipelineResult.makespan;
@@ -139,7 +185,7 @@ export const runPipeline = async (req, res) => {
       updated_at:     db.fn.now(),
     });
 
-    for (const item of pipelineResult.schedule) {
+    for (const item of scheduleItems) {
       const jobRow = jobs.find(j => j.job_id === item.job_id);
       if (!jobRow) continue;
 
@@ -190,11 +236,11 @@ export const runPipeline = async (req, res) => {
       makespan:       totalMakespan,
       total_jobs:     jobs.length,
       total_machines: machines.length,
-      detail:         pipelineResult.schedule,
+      detail:         scheduleItems,
       summary: {
         base_time:            baseTime.toISOString(),
         total_makespan_menit: totalMakespan,
-        jobs_scheduled:       pipelineResult.schedule.length,
+        jobs_scheduled:       scheduleItems.length,
         rf_model_r2:          pipelineResult.summary?.rf_model_r2  || null,
         rf_model_mae:         pipelineResult.summary?.rf_model_mae || null,
         generated_at:         pipelineResult.summary?.generated_at || null,
@@ -202,7 +248,7 @@ export const runPipeline = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('runPipeline error:', err);
+    console.error('[runPipeline] error:', err);
     return error(res, 'Gagal menjalankan pipeline: ' + err.message);
   }
 };
@@ -249,7 +295,7 @@ export const getPipelineResult = async (req, res) => {
     return success(res, 'Berhasil mengambil hasil pipeline', { schedule, jobs });
 
   } catch (err) {
-    console.error('getPipelineResult error:', err);
+    console.error('[getPipelineResult] error:', err);
     return error(res, 'Gagal mengambil hasil pipeline');
   }
 };
@@ -262,7 +308,7 @@ export const getAllSchedules = async (req, res) => {
     const schedules = await db('schedules').orderBy('created_at', 'desc');
     return success(res, 'Berhasil mengambil semua jadwal', schedules);
   } catch (err) {
-    console.error('getAllSchedules error:', err);
+    console.error('[getAllSchedules] error:', err);
     return error(res, 'Gagal mengambil jadwal');
   }
 };
@@ -293,7 +339,7 @@ export const finalizeSchedule = async (req, res) => {
     const updated = await db('schedules').where({ id }).first();
     return success(res, 'Jadwal berhasil difinalisasi', updated);
   } catch (err) {
-    console.error('finalizeSchedule error:', err);
+    console.error('[finalizeSchedule] error:', err);
     return error(res, 'Gagal memfinalisasi jadwal');
   }
 };
@@ -306,7 +352,8 @@ export const getModelInfo = async (req, res) => {
     const data = await callFlask('/model/info');
     return success(res, 'Berhasil mengambil info model RF', data.data);
   } catch (err) {
-    return error(res, 'Gagal mengambil info model RF');
+    console.error('[getModelInfo] error:', err);
+    return error(res, 'Gagal mengambil info model RF: ' + err.message);
   }
 };
 
@@ -321,6 +368,7 @@ export const resetModel = async (req, res) => {
     }
     return res.status(500).json({ success: false, message: data.message });
   } catch (err) {
-    return error(res, 'Gagal mereset model RF');
+    console.error('[resetModel] error:', err);
+    return error(res, 'Gagal mereset model RF: ' + err.message);
   }
 };

@@ -1,24 +1,16 @@
 {
-  "nama_model": "Random Forest Regressor",
-  "versi": "v1.0",
-  "mae": 0.0262,
-  "rmse": 0.0583,
-  "r2_score": 1.0,
-  "n_estimators": 100,
-  "features": [
-    "Processing_Time",
-    "Energy_Consumption",
-    "Machine_Availability",
-    "Operation_Type_enc",
-    "Scheduled_Duration",
-    "Scheduled_Start_num"
-  ],
-  "operation_types": [
-    "Additive",
-    "Drilling",
-    "Grinding",
-    "Lathe",
-    "Milling"
-  ],
-  "trained_at": "2026-05-02T18:19:03.206723"
+    "model_info": {
+        "name": "Random Forest Duration Predictor",
+        "features": [
+            "Processing_Time",
+            "Energy_Consumption",
+            "Machine_Availability",
+            "Operation_Type_enc",
+            "Hour_of_Day",
+            "Day_of_Week"
+        ],
+        "r2_score": 0.7872,
+        "mae_minutes": 7.42
+    },
+    "trained_at": "2026-05-19 10:37:13"
 }

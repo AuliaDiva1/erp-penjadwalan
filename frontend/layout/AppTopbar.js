@@ -87,12 +87,6 @@ const AppTopbar = forwardRef((props, ref) => {
                     "layout-topbar-menu-mobile-active": layoutState.profileSidebarVisible,
                 })}
             >
-                {/* Tombol Kalender Tetap Ada */}
-                <button type="button" className="p-link layout-topbar-button">
-                    <i className="pi pi-calendar"></i>
-                    <span>Calendar</span>
-                </button>
-
                 {/* Tombol Profil dengan Avatar Kecil */}
                 <button
                     type="button"

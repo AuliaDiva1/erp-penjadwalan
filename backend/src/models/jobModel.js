@@ -1,6 +1,13 @@
 import { db } from '../core/config/knex.js';
 
-// Generate Job ID otomatis JOB001, JOB002, dst
+export const DEFAULT_PER_OPERATION = {
+  Additive: { energy_consumption: 8.55, machine_availability: 90 },
+  Drilling: { energy_consumption: 8.86, machine_availability: 89 },
+  Grinding: { energy_consumption: 8.49, machine_availability: 89 },
+  Lathe:    { energy_consumption: 8.48, machine_availability: 89 },
+  Milling:  { energy_consumption: 8.25, machine_availability: 89 },
+};
+
 export const generateJobId = async () => {
   const last = await db('jobs').orderBy('id', 'desc').first();
   if (!last) return 'JOB001';
@@ -60,7 +67,15 @@ export const getUrgentJobs = async () =>
 
 export const addJob = async (data) => {
   const job_id = await generateJobId();
-  const [id] = await db('jobs').insert({ job_id, ...data });
+
+  const defaults = DEFAULT_PER_OPERATION[data.operation_type] || {};
+  const finalData = {
+    ...data,
+    energy_consumption:   data.energy_consumption   ?? defaults.energy_consumption,
+    machine_availability: data.machine_availability ?? defaults.machine_availability,
+  };
+
+  const [id] = await db('jobs').insert({ job_id, ...finalData });
   return getJobById(id);
 };
 

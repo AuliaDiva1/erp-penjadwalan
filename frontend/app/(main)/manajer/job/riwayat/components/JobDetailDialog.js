@@ -12,10 +12,12 @@ const STATUS_SEVERITY = {
   Failed:        'danger',
 };
 
+// ← DIUBAH: tambah timeZone WIB
 const fmt = (val) =>
   val ? new Date(val).toLocaleString('id-ID', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
+    timeZone: 'Asia/Jakarta',
   }) : '-';
 
 const fmtBool = (val) => (
@@ -72,7 +74,7 @@ export default function JobDetailDialog({ visible, onHide, job }) {
           <span className="text-color-secondary font-normal">—</span>
           <span className="font-bold" style={{ color: 'var(--primary-color)' }}>{job.job_id}</span>
           <Tag value={job.job_status} severity={STATUS_SEVERITY[job.job_status] || 'info'} style={{ fontSize: '0.75rem' }} />
-          {job.is_urgent      && <Tag value="URGENT"    severity="danger"   style={{ fontSize: '0.75rem' }} />}
+          {job.is_urgent       && <Tag value="URGENT"    severity="danger" style={{ fontSize: '0.75rem' }} />}
           {job.deadline_warning && <Tag value="TERLAMBAT" severity="danger" style={{ fontSize: '0.75rem', background: '#7c2d12' }} />}
         </div>
       }
@@ -85,7 +87,6 @@ export default function JobDetailDialog({ visible, onHide, job }) {
     >
       <div style={{ maxHeight: '76vh', overflowY: 'auto', paddingRight: '4px' }}>
 
-        {/* IDENTITAS JOB */}
         <Section>
           <SectionTitle icon="pi-id-card" title="Identitas Job" />
           <Row label="Job ID"             value={job.job_id} />
@@ -96,16 +97,14 @@ export default function JobDetailDialog({ visible, onHide, job }) {
           <Row label="Material Digunakan" value={job.material_used ? `${job.material_used} unit` : '-'} />
         </Section>
 
-        {/* PARAMETER TEKNIS */}
         <Section>
           <SectionTitle icon="pi-cog" title="Parameter Teknis" />
-          <Row label="Processing Time"       value={`${job.processing_time} menit`} />
-          <Row label="Energy Consumption"    value={`${job.energy_consumption} kWh`} />
-          <Row label="Machine Availability"  value={`${job.machine_availability}%`} />
-          <Row label="Makespan"              value={job.makespan ? `${job.makespan} menit` : '-'} />
+          <Row label="Processing Time"      value={`${job.processing_time} menit`} />
+          <Row label="Energy Consumption"   value={`${job.energy_consumption} kWh`} />
+          <Row label="Machine Availability" value={`${job.machine_availability}%`} />
+          <Row label="Makespan"             value={job.makespan ? `${job.makespan} menit` : '-'} />
         </Section>
 
-        {/* DEADLINE */}
         <Section>
           <SectionTitle icon="pi-calendar-times" title="Deadline" />
           <Row label="Deadline"           value={fmt(job.deadline)} />
@@ -122,7 +121,6 @@ export default function JobDetailDialog({ visible, onHide, job }) {
           />
         </Section>
 
-        {/* JADWAL */}
         <Section>
           <SectionTitle icon="pi-calendar" title="Jadwal" />
           <Row label="Scheduled Start" value={fmt(job.scheduled_start)} />
@@ -130,7 +128,6 @@ export default function JobDetailDialog({ visible, onHide, job }) {
           <Row label="Durasi Jadwal"   value={durasiJadwal ? `${durasiJadwal} menit` : '-'} />
         </Section>
 
-        {/* AKTUAL */}
         <Section>
           <SectionTitle icon="pi-check-circle" title="Aktual Pelaksanaan" />
           <Row label="Actual Start"  value={fmt(job.actual_start)} />
@@ -152,18 +149,16 @@ export default function JobDetailDialog({ visible, onHide, job }) {
           )}
         </Section>
 
-        {/* OPTIMISASI & PRIORITAS */}
         <Section>
           <SectionTitle icon="pi-chart-bar" title="Optimisasi & Prioritas" />
-          <Row label="Fuzzy Score"           value={job.fuzzy_score       ?? '-'} />
-          <Row label="Priority Score"        value={job.priority_score    ?? '-'} />
-          <Row label="Optimization Category" value={job.optimization_category ?? '-'} />
+          <Row label="Fuzzy Score"           value={job.fuzzy_score            ?? '-'} />
+          <Row label="Priority Score"        value={job.priority_score         ?? '-'} />
+          <Row label="Optimization Category" value={job.optimization_category  ?? '-'} />
           <Row label="Priority Override"     value={fmtBool(job.priority_override)} />
           <Row label="Is Urgent"             value={fmtBool(job.is_urgent)} />
           <Row label="Reschedule Count"      value={job.reschedule_count ?? 0} />
         </Section>
 
-        {/* METADATA */}
         <Section>
           <SectionTitle icon="pi-info-circle" title="Metadata" />
           <Row label="Created At" value={fmt(job.created_at)} />

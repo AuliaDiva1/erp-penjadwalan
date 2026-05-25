@@ -66,8 +66,7 @@ export const createJobController = async (req, res) => {
   try {
     const {
       machine_id, material_id, operation_type,
-      processing_time, energy_consumption,
-      machine_availability, material_used,
+      processing_time, material_used,
       deadline_customer, is_urgent,
     } = req.body;
 
@@ -80,12 +79,6 @@ export const createJobController = async (req, res) => {
 
     if (!processing_time || processing_time < 20 || processing_time > 120)
       return res.status(400).json({ success: false, message: 'Processing time harus antara 20-120 menit' });
-
-    if (!energy_consumption || energy_consumption < 2.01 || energy_consumption > 14.98)
-      return res.status(400).json({ success: false, message: 'Energy consumption harus antara 2.01-14.98 kWh' });
-
-    if (!machine_availability || machine_availability < 80 || machine_availability > 99)
-      return res.status(400).json({ success: false, message: 'Machine availability harus antara 80-99%' });
 
     if (material_id && material_used) {
       const material = await db('materials').where({ id: material_id }).first();
@@ -125,8 +118,6 @@ export const createJobController = async (req, res) => {
       material_id:        material_id      || null,
       operation_type,
       processing_time,
-      energy_consumption,
-      machine_availability,
       material_used:      material_used    || null,
       deadline_customer:  deadlineCustomerFormatted,
       deadline_is_manual: deadlineCustomerFormatted ? true : false,
@@ -201,8 +192,6 @@ export const updateJobActualController = async (req, res) => {
     if (job_status && !validStatus.includes(job_status))
       return res.status(400).json({ success: false, message: 'Status tidak valid' });
 
-    // ── PERBAIKAN: jangan timpa field yang tidak dikirim ──
-    // kalau field tidak ada di body (undefined), pakai nilai lama dari DB
     const finalStart = actual_start !== undefined
       ? formatDateToMySQL(actual_start)
       : job.actual_start || null;
@@ -210,7 +199,6 @@ export const updateJobActualController = async (req, res) => {
     const finalEnd = actual_end !== undefined
       ? formatDateToMySQL(actual_end)
       : job.actual_end || null;
-    // ──────────────────────────────────────────────────────
 
     if (finalStart && finalEnd) {
       const start = new Date(finalStart);
@@ -232,7 +220,6 @@ export const updateJobActualController = async (req, res) => {
       updated_at:       db.fn.now(),
     });
 
-    // kurangi stok kalau job Completed
     if (job_status === 'Completed' && job.material_id && job.material_used) {
       const material = await db('materials').where({ id: job.material_id }).first();
       if (material) {

@@ -50,6 +50,14 @@ const toWIBMySQL = (date) => {
   return wib.toISOString().slice(0, 19).replace('T', ' ');
 };
 
+// ← DIUBAH: tambah timeZone WIB
+const formatDate = (val) =>
+  val ? new Date(val).toLocaleString('id-ID', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Jakarta',
+  }) : '-';
+
 export default function RiwayatPesananPage() {
   const toast  = useRef(null);
   const router = useRouter();
@@ -263,12 +271,6 @@ export default function RiwayatPesananPage() {
     });
   };
 
-  const formatDate = (val) =>
-    val ? new Date(val).toLocaleString('id-ID', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }) : '-';
-
   const statusTemplate = (row) => (
     <Tag value={row.job_status} severity={STATUS_SEVERITY[row.job_status] || 'info'} />
   );
@@ -277,11 +279,9 @@ export default function RiwayatPesananPage() {
     <div className="flex gap-1">
       <Button icon="pi pi-eye" rounded text severity="info" tooltip="Detail"
         onClick={() => handleDetail(row)} />
-
       <Button icon="pi pi-pencil" rounded text severity="secondary" tooltip="Edit"
         disabled={['In Progress', 'Completed'].includes(row.job_status)}
         onClick={() => handleEdit(row)} />
-
       {row.job_status === 'Scheduled' && (
         <Button icon="pi pi-play" rounded text severity="success" tooltip="Mulai (In Progress)"
           onClick={() => confirmDialog({
@@ -294,7 +294,6 @@ export default function RiwayatPesananPage() {
           })}
         />
       )}
-
       {row.job_status === 'In Progress' && (
         <Button icon="pi pi-check" rounded text severity="success" tooltip="Selesai (Completed)"
           onClick={() => confirmDialog({
@@ -307,15 +306,12 @@ export default function RiwayatPesananPage() {
           })}
         />
       )}
-
       {['Delayed', 'Failed'].includes(row.job_status) && (
         <Button icon="pi pi-refresh" rounded text severity="warning" tooltip="Reschedule"
           onClick={() => handleReschedule(row)} />
       )}
-
       <Button icon="pi pi-clock" rounded text severity="warning" tooltip="Input Aktual"
         onClick={() => handleActual(row)} />
-
       <Button icon="pi pi-trash" rounded text severity="danger" tooltip="Hapus"
         disabled={['Completed', 'In Progress'].includes(row.job_status)}
         onClick={() => handleDelete(row)} />
@@ -403,20 +399,17 @@ export default function RiwayatPesananPage() {
           sortField="created_at" sortOrder={-1}
           rowClassName={(row) => ['Delayed', 'Failed'].includes(row.job_status) ? 'bg-red-50' : ''}
         >
-          <Column field="job_id"          header="Job ID"         sortable style={{ fontWeight: 600, width: '100px' }} />
-          <Column field="operation_type"  header="Operasi"        sortable style={{ width: '110px' }} />
-          <Column
-            field="assigned_machine_name"
-            header="Mesin"
-            body={(r) => r.assigned_machine_name || r.machine_name || '-'}  // ← FIX
-          />
-          <Column field="processing_time" header="Proc Time"      body={(r) => `${r.processing_time} mnt`} sortable style={{ width: '100px' }} />
-          <Column field="job_status"      header="Status"         body={statusTemplate} sortable style={{ width: '110px' }} />
-          <Column field="scheduled_start" header="Jadwal Mulai"   body={(r) => formatDate(r.scheduled_start)} sortable />
-          <Column field="deadline"        header="Deadline"       body={(r) => formatDate(r.deadline)} sortable />
-          <Column field="actual_start"    header="Aktual Mulai"   body={(r) => formatDate(r.actual_start)} />
+          <Column field="job_id"          header="Job ID"       sortable style={{ fontWeight: 600, width: '100px' }} />
+          <Column field="operation_type"  header="Operasi"      sortable style={{ width: '110px' }} />
+          <Column field="assigned_machine_name" header="Mesin"
+            body={(r) => r.assigned_machine_name || r.machine_name || '-'} />
+          <Column field="processing_time" header="Proc Time"    body={(r) => `${r.processing_time} mnt`} sortable style={{ width: '100px' }} />
+          <Column field="job_status"      header="Status"       body={statusTemplate} sortable style={{ width: '110px' }} />
+          <Column field="scheduled_start" header="Jadwal Mulai" body={(r) => formatDate(r.scheduled_start)} sortable />
+          <Column field="deadline"        header="Deadline"     body={(r) => formatDate(r.deadline)} sortable />
+          <Column field="actual_start"    header="Aktual Mulai" body={(r) => formatDate(r.actual_start)} />
           <Column field="actual_end"      header="Aktual Selesai" body={(r) => formatDate(r.actual_end)} />
-          <Column header="Aksi"           body={actionTemplate}   style={{ width: '210px' }} />
+          <Column header="Aksi"           body={actionTemplate} style={{ width: '210px' }} />
         </DataTable>
       </div>
 
@@ -426,7 +419,7 @@ export default function RiwayatPesananPage() {
         job={selectedJob}
       />
 
-      {/* DIALOG EDIT — tanpa field Mesin, sesuai pipeline CCEA */}
+      {/* DIALOG EDIT */}
       <Dialog
         header={`Edit Job: ${selectedJob?.job_id}`}
         visible={editVisible}
@@ -444,8 +437,6 @@ export default function RiwayatPesananPage() {
               style={{ width: '100%' }}
             />
           </div>
-
-          {/* Mesin: read-only, dari hasil pipeline */}
           <div className="field mb-3">
             <label className="font-bold block mb-2">Mesin (dari Pipeline CCEA)</label>
             <InputText
@@ -454,7 +445,6 @@ export default function RiwayatPesananPage() {
               style={{ width: '100%' }}
             />
           </div>
-
           <div className="formgrid grid">
             <div className="field col-6">
               <label className="font-bold block mb-2">Processing Time (mnt)</label>

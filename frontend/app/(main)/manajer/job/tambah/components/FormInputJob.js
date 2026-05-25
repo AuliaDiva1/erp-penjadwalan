@@ -18,14 +18,12 @@ const OPERATION_TYPES = [
 ];
 
 const defaultForm = {
-  operation_type:       null,
-  material_id:          null,
-  processing_time:      null,
-  energy_consumption:   null,
-  machine_availability: null,
-  deadline_customer:    null,
-  material_used:        null,
-  is_urgent:            false,
+  operation_type:    null,
+  material_id:       null,
+  processing_time:   null,
+  deadline_customer: null,
+  material_used:     null,
+  is_urgent:         false,
 };
 
 const FormInputJob = () => {
@@ -86,14 +84,6 @@ const FormInputJob = () => {
       toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Processing time harus antara 20-120 menit' });
       return false;
     }
-    if (!form.energy_consumption) {
-      toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Energy consumption wajib diisi' });
-      return false;
-    }
-    if (!form.machine_availability) {
-      toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Machine availability wajib diisi' });
-      return false;
-    }
     return true;
   };
 
@@ -105,8 +95,12 @@ const FormInputJob = () => {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body:    JSON.stringify({
-          ...form,
-          machine_id:        null, // ditentukan oleh pipeline CCEA
+          operation_type:    form.operation_type,
+          material_id:       form.material_id,
+          processing_time:   form.processing_time,
+          material_used:     form.material_used,
+          is_urgent:         form.is_urgent,
+          machine_id:        null,
           deadline_customer: form.deadline_customer ? form.deadline_customer.toISOString() : null,
         }),
       });
@@ -185,7 +179,7 @@ const FormInputJob = () => {
 
               {/* Material Used */}
               <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">Material Used</label>
+                <label className="font-bold block mb-2">Jumlah Material Digunakan</label>
                 <InputNumber
                   value={form.material_used}
                   onValueChange={(e) => set('material_used', e.value)}
@@ -210,38 +204,6 @@ const FormInputJob = () => {
                   style={{ width: '100%' }}
                 />
                 <small className="text-color-secondary">Min: 20 | Max: 120 menit</small>
-              </div>
-
-              {/* Energy Consumption */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">
-                  Energy Consumption (kWh) <span className="text-red-500">*</span>
-                </label>
-                <InputNumber
-                  value={form.energy_consumption}
-                  onValueChange={(e) => set('energy_consumption', e.value)}
-                  min={2.01} max={14.98}
-                  minFractionDigits={2}
-                  maxFractionDigits={2}
-                  suffix=" kWh"
-                  style={{ width: '100%' }}
-                />
-                <small className="text-color-secondary">Range: 2.01 – 14.98 kWh</small>
-              </div>
-
-              {/* Machine Availability */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">
-                  Machine Availability (%) <span className="text-red-500">*</span>
-                </label>
-                <InputNumber
-                  value={form.machine_availability}
-                  onValueChange={(e) => set('machine_availability', e.value)}
-                  min={80} max={99}
-                  suffix="%"
-                  style={{ width: '100%' }}
-                />
-                <small className="text-color-secondary">Range: 80 – 99%</small>
               </div>
 
               {/* Deadline Customer */}
@@ -311,8 +273,8 @@ const FormInputJob = () => {
               { label: 'Operation Type',  value: form.operation_type || '-' },
               { label: 'Mesin',           value: 'Ditentukan otomatis oleh CCEA' },
               { label: 'Processing Time', value: form.processing_time ? `${form.processing_time} menit` : '-' },
-              { label: 'Energy',          value: form.energy_consumption ? `${form.energy_consumption} kWh` : '-' },
-              { label: 'Availability',    value: form.machine_availability ? `${form.machine_availability}%` : '-' },
+              { label: 'Energy',          value: 'Otomatis dari sistem' },
+              { label: 'Availability',    value: 'Otomatis dari sistem' },
               { label: 'Urgent',          value: form.is_urgent ? '⚡ Ya' : 'Tidak' },
               { label: 'Deadline',        value: form.deadline_customer ? new Date(form.deadline_customer).toLocaleString('id-ID') : 'Prediksi otomatis' },
               { label: 'Status Awal',     value: 'Pending' },
@@ -331,6 +293,7 @@ const FormInputJob = () => {
               { icon: 'pi-star',     color: '#6366f1', text: 'Operation Type menentukan bobot prioritas Fuzzy Mamdani' },
               { icon: 'pi-cog',      color: '#f59e0b', text: 'Mesin ditentukan otomatis oleh algoritma CCEA saat pipeline dijalankan' },
               { icon: 'pi-clock',    color: '#22c55e', text: 'Processing time harus 20-120 menit sesuai dataset' },
+              { icon: 'pi-bolt',     color: '#8b5cf6', text: 'Energy consumption & machine availability diisi otomatis sistem berdasarkan jenis operasi' },
               { icon: 'pi-calendar', color: '#3b82f6', text: 'Deadline opsional, sistem prediksi otomatis via Random Forest' },
               { icon: 'pi-play',     color: '#ef4444', text: 'Setelah disimpan, jalankan pipeline untuk mendapat jadwal optimal' },
             ].map((item, i) => (
