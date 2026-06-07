@@ -1,15 +1,12 @@
-import json
 import logging
-import os
 import threading
 from datetime import datetime, timedelta
 
-import joblib
-import numpy as np
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import os
 
 from fuzzy import (
     FuzzyInputError,
@@ -34,78 +31,36 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 DB_API     = os.getenv("DB_API", "")
 FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
-MODEL_DIR  = os.path.join(os.path.dirname(__file__), "models")
 DB_TIMEOUT = 5
 
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
 
-class ModelNotLoadedError(RuntimeError):
-    """Model RF belum di-load."""
-
 class PipelineInputError(ValueError):
     """Input pipeline tidak valid."""
 
 # ---------------------------------------------------------------------------
-# Helper: baca metrik dari metadata
+# Helper: hitung deadline (rule-based)
+# Deadline = Scheduled_Start + Processing_Time
 # ---------------------------------------------------------------------------
 
-def _meta_r2(meta: dict) -> float | None:
-    nested = meta.get("duration_model", {})
-    return nested.get("r2_test") or meta.get("r2_score")
-
-
-def _meta_mae(meta: dict) -> float | None:
-    nested = meta.get("duration_model", {})
-    return nested.get("mae") or meta.get("mae")
-
-
-# ---------------------------------------------------------------------------
-# Model loader
-# ---------------------------------------------------------------------------
-
-_model_lock = threading.Lock()
-
-
-def _load_models() -> dict:
-    try:
-        duration      = joblib.load(os.path.join(MODEL_DIR, "model_duration.pkl"))
-        offset        = joblib.load(os.path.join(MODEL_DIR, "model_offset.pkl"))
-        label_encoder = joblib.load(os.path.join(MODEL_DIR, "label_encoder.pkl"))
-        with open(os.path.join(MODEL_DIR, "metadata.json")) as f:
-            meta = json.load(f)
-        logger.info(
-            "[RF] Model loaded | R²: %s | MAE: %s menit",
-            _meta_r2(meta),
-            _meta_mae(meta),
+def hitung_deadline(job: dict, scheduled_start_dt: datetime) -> dict:
+    pt = job.get("processing_time")
+    if pt is None or not isinstance(pt, (int, float)) or pt <= 0:
+        raise PipelineInputError(
+            f"Job '{job.get('job_id', '?')}' processing_time tidak valid: {pt!r}"
         )
-        return {
-            "duration":      duration,
-            "offset":        offset,
-            "label_encoder": label_encoder,
-            "metadata":      meta,
-        }
-    except Exception as exc:
-        raise ModelNotLoadedError(f"Gagal load model RF: {exc}") from exc
 
+    predicted_end = scheduled_start_dt + timedelta(minutes=float(pt))
+    deadline      = predicted_end  # Deadline = Scheduled_Start + Processing_Time
 
-try:
-    _models = _load_models()
-except ModelNotLoadedError as e:
-    logger.warning("%s", e)
-    _models = {}
-
-
-def get_models() -> dict:
-    return _models
-
-
-def reload_models() -> dict:
-    global _models
-    with _model_lock:
-        _models = _load_models()
-    return _models
+    return {
+        "predicted_duration": round(float(pt), 2),
+        "predicted_start":    scheduled_start_dt.isoformat(),
+        "predicted_end":      predicted_end.isoformat(),
+        "deadline_predicted": deadline.isoformat(),
+    }
 
 # ---------------------------------------------------------------------------
 # Flask app
@@ -169,63 +124,6 @@ def load_ccea_config(token: str | None = None, force_reload: bool = False) -> di
         return None
 
 # ---------------------------------------------------------------------------
-# Helper: prediksi deadline (RF)
-# ---------------------------------------------------------------------------
-
-def prediksi_deadline(job: dict, scheduled_start_dt: datetime) -> dict:
-    pt = job.get("processing_time")
-    if pt is None or not isinstance(pt, (int, float)) or pt <= 0:
-        raise PipelineInputError(
-            f"Job '{job.get('job_id', '?')}' processing_time tidak valid: {pt!r}"
-        )
-
-    models = get_models()
-
-    if not models:
-        duration = float(pt)
-        offset   = 0.0
-    else:
-        try:
-            op_type = job.get("operation_type", "Lathe")
-            try:
-                op_enc = int(models["label_encoder"].transform([op_type])[0])
-            except Exception:
-                logger.warning("[RF] Operation type '%s' tidak dikenal, pakai 0.", op_type)
-                op_enc = 0
-
-            X = np.array([[
-                float(pt),
-                float(job.get("energy_consumption",   8.0)),
-                float(job.get("machine_availability", 90.0)),
-                op_enc,
-                scheduled_start_dt.hour,
-                scheduled_start_dt.weekday(),
-            ]])
-
-            duration = float(models["duration"].predict(X)[0])
-            offset   = float(models["offset"].predict(X)[0])
-
-        except Exception as exc:
-            logger.warning(
-                "[RF] Prediksi gagal untuk job '%s': %s, pakai fallback.",
-                job.get("job_id"), exc,
-            )
-            duration = float(pt)
-            offset   = 0.0
-
-    actual_start = scheduled_start_dt + timedelta(minutes=max(0.0, offset))
-    actual_end   = actual_start       + timedelta(minutes=max(1.0, duration))
-    deadline     = actual_end         + timedelta(minutes=float(pt) * 0.2)
-
-    return {
-        "predicted_duration": round(duration, 2),
-        "predicted_offset":   round(offset, 2),
-        "predicted_start":    actual_start.isoformat(),
-        "predicted_end":      actual_end.isoformat(),
-        "deadline_predicted": deadline.isoformat(),
-    }
-
-# ---------------------------------------------------------------------------
 # Helper: validasi jobs & machines dari request body
 # ---------------------------------------------------------------------------
 
@@ -253,18 +151,13 @@ def _parse_body_jobs_machines(body: dict) -> tuple[list, list]:
 
 @app.route("/health", methods=["GET"])
 def health():
-    models   = get_models()
-    metadata = models.get("metadata", {})
     return jsonify({
-        "status":   "ok",
-        "model_rf": bool(models),
-        "r2_score": _meta_r2(metadata),
-        "mae":      _meta_mae(metadata),
-        "metadata": metadata,
+        "status":  "ok",
+        "service": "Fuzzy Mamdani + CCEA Scheduling Pipeline",
     })
 
 # ============================================================
-# ENDPOINT 2: Prediksi Deadline (RF saja)
+# ENDPOINT 2: Hitung Deadline (rule-based)
 # ============================================================
 
 @app.route("/predict/deadline", methods=["POST"])
@@ -287,7 +180,7 @@ def predict_deadline():
                 if job.get("scheduled_start")
                 else base_time
             )
-            pred = prediksi_deadline(job, scheduled_start)
+            pred = hitung_deadline(job, scheduled_start)
             results.append({"job_id": job_id, **pred})
         except (PipelineInputError, ValueError) as exc:
             logger.warning("[predict_deadline] Job '%s' dilewati: %s", job_id, exc)
@@ -296,7 +189,7 @@ def predict_deadline():
     return jsonify({"success": True, "data": results, "errors": errors})
 
 # ============================================================
-# ENDPOINT 3: Hitung Prioritas Fuzzy (Fuzzy saja)
+# ENDPOINT 3: Hitung Prioritas Fuzzy
 # ============================================================
 
 @app.route("/fuzzy/prioritas", methods=["POST"])
@@ -309,7 +202,6 @@ def fuzzy_prioritas():
         return jsonify({"success": False, "message": "Field 'jobs' harus list non-kosong."}), 400
 
     try:
-        # hitung_prioritas_batch return {"results": [...], "errors": [...]}
         batch = hitung_prioritas_batch(jobs, token)
         return jsonify({
             "success": True,
@@ -320,7 +212,7 @@ def fuzzy_prioritas():
         return jsonify({"success": False, "message": str(exc)}), 400
 
 # ============================================================
-# ENDPOINT 4: Pipeline Lengkap (RF + Fuzzy + CCEA)
+# ENDPOINT 4: Pipeline Lengkap (Fuzzy + CCEA)
 # ============================================================
 
 @app.route("/pipeline/run", methods=["POST"])
@@ -337,9 +229,9 @@ def pipeline_run():
 
     base_time = datetime.now()
 
-    # ── STEP 1: RF — Prediksi Deadline ──────────────
-    logger.info("[STEP 1] Random Forest — Prediksi Deadline")
-    rf_results: dict[str, dict] = {}
+    # ── STEP 1: Hitung Deadline (rule-based) ────────
+    logger.info("[STEP 1] Rule-Based — Hitung Deadline")
+    deadline_results: dict[str, dict] = {}
     for job in jobs:
         job_id = job.get("job_id", "?")
         try:
@@ -348,16 +240,15 @@ def pipeline_run():
                 if job.get("scheduled_start")
                 else base_time
             )
-            rf_results[job_id] = prediksi_deadline(job, scheduled_start)
+            deadline_results[job_id] = hitung_deadline(job, scheduled_start)
             logger.debug(
-                "  %s → durasi: %s menit | deadline: %s",
+                "  %s → deadline: %s",
                 job_id,
-                rf_results[job_id]["predicted_duration"],
-                rf_results[job_id]["deadline_predicted"][:19],
+                deadline_results[job_id]["deadline_predicted"][:19],
             )
         except PipelineInputError as exc:
             logger.warning("[STEP 1] Job '%s' dilewati: %s", job_id, exc)
-            rf_results[job_id] = {}
+            deadline_results[job_id] = {}
 
     # ── STEP 2: Fuzzy Mamdani — Hitung Prioritas ────
     logger.info("[STEP 2] Fuzzy Mamdani — Hitung Prioritas")
@@ -373,8 +264,6 @@ def pipeline_run():
     ]
 
     try:
-        # FIX: hitung_prioritas_batch return dict {"results": [...], "errors": [...]}
-        # bukan list langsung
         batch_fuzzy  = hitung_prioritas_batch(fuzzy_input, token)
     except FuzzyInputError as exc:
         return jsonify({"success": False, "message": f"Fuzzy error: {exc}"}), 400
@@ -417,7 +306,6 @@ def pipeline_run():
 
     # ── STEP 4: Gabungkan Hasil ──────────────────────
     logger.info("[STEP 4] Menggabungkan hasil...")
-    metadata = get_models().get("metadata", {})
 
     final_schedule = [
         {
@@ -428,9 +316,9 @@ def pipeline_run():
             "duration":            item["duration"],
             "start_offset_menit":  item["start_time"],
             "end_offset_menit":    item["end_time"],
-            # hasil RF
-            "deadline_predicted":  rf_results.get(item["job_id"], {}).get("deadline_predicted"),
-            "predicted_duration":  rf_results.get(item["job_id"], {}).get("predicted_duration"),
+            # hasil rule-based deadline
+            "deadline_predicted":  deadline_results.get(item["job_id"], {}).get("deadline_predicted"),
+            "predicted_duration":  deadline_results.get(item["job_id"], {}).get("predicted_duration"),
             # hasil Fuzzy
             "skor_prioritas":      fuzzy_map.get(item["job_id"], {}).get("skor_final", 0),
             "skor_crisp":          fuzzy_map.get(item["job_id"], {}).get("skor_crisp", 0),
@@ -451,8 +339,6 @@ def pipeline_run():
         "total_machines": len(machine_ids),
         "schedule":       final_schedule,
         "summary": {
-            "rf_model_r2":   _meta_r2(metadata),
-            "rf_model_mae":  _meta_mae(metadata),
             "fuzzy_rules":   27,
             "ccea_generasi": ccea_result.get("generasi"),
             "ccea_cache":    ccea_result.get("cache_stats"),
@@ -462,66 +348,14 @@ def pipeline_run():
     })
 
 # ============================================================
-# ENDPOINT 5: Info Model RF
-# ============================================================
-
-@app.route("/model/info", methods=["GET"])
-def model_info():
-    models   = get_models()
-    metadata = models.get("metadata", {})
-    return jsonify({
-        "success": True,
-        "data": {
-            **metadata,
-            "r2_score":   _meta_r2(metadata),
-            "mae":        _meta_mae(metadata),
-            "is_active":  bool(models),
-            "trained_at": metadata.get("trained_at"),
-        },
-    })
-
-# ============================================================
-# ENDPOINT 6: Reset Model (re-training)
-# ============================================================
-
-@app.route("/model/reset", methods=["POST"])
-def model_reset():
-    try:
-        import train
-        import importlib
-        importlib.reload(train)
-    except Exception as exc:
-        logger.error("[model/reset] Training gagal: %s", exc)
-        return jsonify({"success": False, "message": f"Training gagal: {exc}"}), 500
-
-    try:
-        new_models = reload_models()
-        invalidate_config_cache()
-        return jsonify({
-            "success":  True,
-            "message":  "Model berhasil direset dan dilatih ulang.",
-            "r2_score": _meta_r2(new_models.get("metadata", {})),
-            "mae":      _meta_mae(new_models.get("metadata", {})),
-            "metadata": new_models.get("metadata", {}),
-        })
-    except Exception as exc:
-        logger.error("[model/reset] Gagal load model baru: %s", exc)
-        return jsonify({"success": False, "message": f"Gagal load model baru: {exc}"}), 500
-
-# ============================================================
 # Entry point
 # ============================================================
 
 if __name__ == "__main__":
-    models   = get_models()
-    metadata = models.get("metadata", {})
     logger.info("=" * 50)
     logger.info("FLASK SERVICE RUNNING")
     logger.info("Port  : %d", FLASK_PORT)
     logger.info("DB API: %s", DB_API or "(tidak di-set)")
-    logger.info("Model : %s", "loaded" if models else "NOT LOADED")
-    if models:
-        logger.info("R²    : %s", _meta_r2(metadata))
-        logger.info("MAE   : %s menit", _meta_mae(metadata))
+    logger.info("Pipeline: Fuzzy Mamdani + CCEA")
     logger.info("=" * 50)
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)

@@ -1,68 +1,69 @@
-import { success, error } from '../utils/response.js';
-import * as Model from '../models/procurementModel.js';
-import { db } from '../core/config/knex.js';
+import {
+  getAllProcurements,
+  getPendingProcurements,
+  getProcurementById,
+  updateProcurementStatus,
+} from '../models/procurementModel.js';
+import {
+  getMaterialById,
+  updateStock,
+} from '../models/materialModel.js';
 
 export const getAllProcurementsController = async (req, res) => {
   try {
-    const data = await Model.getAllProcurements();
-    return success(res, 'Berhasil mengambil data pengadaan', data);
+    const data = await getAllProcurements();
+    res.json({ success: true, data });
   } catch (err) {
-    console.error('getAllProcurements error:', err);
-    return error(res, 'Gagal mengambil data pengadaan');
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const getPendingProcurementsController = async (req, res) => {
   try {
-    const data = await Model.getPendingProcurements();
-    return success(res, 'Berhasil mengambil notifikasi pengadaan', data);
+    const data = await getPendingProcurements();
+    res.json({ success: true, data });
   } catch (err) {
-    console.error('getPendingProcurements error:', err);
-    return error(res, 'Gagal mengambil notifikasi pengadaan');
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const updateProcurementStatusController = async (req, res) => {
   try {
-    const { id }          = req.params;
-    const { status, notes } = req.body;
-    const user_id         = req.user?.userId;  // ← fix dari req.user?.id
+    const procurement = await getProcurementById(req.params.id);
+    if (!procurement)
+      return res.status(404).json({ success: false, message: 'Pengadaan tidak ditemukan' });
 
-    const procurement = await Model.getProcurementById(id);
-    if (!procurement) {
-      return res.status(404).json({ success: false, message: 'Data pengadaan tidak ditemukan' });
-    }
+    const { status, required_qty } = req.body;
 
-    const validStatus = ['pending', 'in_progress', 'completed'];
-    if (!validStatus.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Status tidak valid' });
-    }
-
-    await Model.updateProcurementStatus(id, status, user_id, notes);
-
-    // kalau completed, update stok bahan baku otomatis
-    if (status === 'completed') {
-      const currentMaterial = await db('materials')
-        .where({ id: procurement.material_id })
-        .first();
-
-      const newStock = (currentMaterial?.current_stock || 0) + procurement.required_qty;
-
-      await db('materials').where({ id: procurement.material_id }).update({
-        current_stock: newStock,
-        updated_at:    db.fn.now(),
+    const VALID_STATUSES = ['pending', 'in_progress', 'completed'];
+    if (!status || !VALID_STATUSES.includes(status))
+      return res.status(400).json({
+        success: false,
+        message: `Status tidak valid. Pilihan: ${VALID_STATUSES.join(', ')}`,
       });
 
-      // cek apakah stok masih kritis setelah pengadaan
-      if (newStock <= currentMaterial?.min_stock_level) {
-        console.warn(`[Procurement] Stok ${currentMaterial?.material_name} masih kritis setelah pengadaan: ${newStock}`);
+    // ✅ qty wajib diisi dan valid
+    if (!required_qty || Number(required_qty) <= 0)
+      return res.status(400).json({ success: false, message: 'Qty pengadaan wajib diisi dan lebih dari 0' });
+
+    // ✅ jika completed, stok otomatis bertambah
+    if (status === 'completed') {
+      const material = await getMaterialById(procurement.material_id);
+      if (material) {
+        const newStock = Number(material.current_stock) + Number(required_qty);
+        await updateStock(procurement.material_id, newStock);
       }
     }
 
-    const updated = await Model.getProcurementById(id);
-    return success(res, 'Status pengadaan berhasil diperbarui', updated);
+    await updateProcurementStatus(req.params.id, { status, required_qty: Number(required_qty) });
+    const updated = await getProcurementById(req.params.id);
+
+    res.json({
+      success: true,
+      message: `Status pengadaan diubah menjadi ${status}`,
+      data:    updated,
+    });
   } catch (err) {
-    console.error('updateProcurementStatus error:', err);
-    return error(res, 'Gagal memperbarui status pengadaan');
+    res.status(500).json({ success: false, message: err.message });
   }
 };

@@ -11,7 +11,7 @@ import { Dropdown } from 'primereact/dropdown';
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const STATUS_OPTIONS = [
-  { label: 'Semua Status', value: null        },
+  { label: 'Semua Status', value: null          },
   { label: 'Pending',      value: 'pending'     },
   { label: 'Diproses',     value: 'in_progress' },
   { label: 'Selesai',      value: 'completed'   },
@@ -19,8 +19,8 @@ const STATUS_OPTIONS = [
 
 export default function RiwayatPengadaanPage() {
   const toast = useRef(null);
-  const [data, setData]                 = useState([]);
-  const [loading, setLoading]           = useState(false);
+  const [data,         setData]         = useState([]);
+  const [loading,      setLoading]      = useState(false);
   const [globalFilter, setGlobalFilter] = useState('');
   const [filterStatus, setFilterStatus] = useState(null);
 
@@ -50,9 +50,7 @@ export default function RiwayatPengadaanPage() {
     completed:   data.filter(d => d.status === 'completed').length,
   };
 
-  const filteredData = filterStatus
-    ? data.filter(d => d.status === filterStatus)
-    : data;
+  const filteredData = filterStatus ? data.filter(d => d.status === filterStatus) : data;
 
   const getStatusConfig = (status) => {
     const map = {
@@ -68,30 +66,6 @@ export default function RiwayatPengadaanPage() {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     }) : '-';
-
-  const statusTemplate   = (row) => {
-    const s = getStatusConfig(row.status);
-    return <Tag value={s.label} severity={s.severity} />;
-  };
-
-  const tipeTemplate = (row) => (
-    <Tag
-      value={row.is_auto ? 'Otomatis' : 'Manual'}
-      severity={row.is_auto ? 'info' : 'secondary'}
-    />
-  );
-
-  const qtyTemplate = (row) => (
-    <span className="font-semibold">
-      {row.required_qty} {row.nama_satuan}
-    </span>
-  );
-
-  const stokAwalTemplate = (row) => (
-    <span className="text-red-500 font-semibold">
-      {row.current_stock_at_trigger} {row.nama_satuan}
-    </span>
-  );
 
   const header = (
     <div className="flex justify-content-between align-items-center flex-wrap gap-2">
@@ -167,24 +141,40 @@ export default function RiwayatPengadaanPage() {
           sortField="created_at"
           sortOrder={-1}
         >
-          <Column field="kode_bahan_baku" header="Kode"            sortable style={{ width: '100px', fontWeight: 600 }} />
-          <Column field="material_name"   header="Bahan Baku"      sortable />
-          <Column header="Stok Saat Notif" body={stokAwalTemplate} />
-          <Column header="Qty Dibutuhkan"  body={qtyTemplate} />
-          <Column header="Tipe"            body={tipeTemplate} />
-          <Column header="Status"          body={statusTemplate}   sortable sortField="status" />
+          <Column field="kode_bahan_baku" header="Kode"           sortable style={{ width: '100px', fontWeight: 600 }} />
+          <Column field="material_name"   header="Bahan Baku"     sortable />
           <Column
-            field="handled_by"
-            header="Ditangani Oleh"
-            body={(row) => row.handled_by || <span className="text-color-secondary">-</span>}
+            header="Stok Saat Notif"
+            body={(row) => (
+              <span className="text-red-500 font-semibold">
+                {row.current_stock_at_trigger} {row.nama_satuan}
+              </span>
+            )}
           />
           <Column
-            field="notes"
-            header="Catatan"
-            body={(row) => row.notes || <span className="text-color-secondary">-</span>}
+            header="Qty Dibutuhkan"
+            body={(row) => (
+              <span className="font-semibold">
+                {row.required_qty} {row.nama_satuan}
+              </span>
+            )}
           />
-          <Column field="created_at" header="Dibuat"        body={(row) => formatDate(row.created_at)} sortable />
-          <Column field="updated_at" header="Diupdate"      body={(row) => formatDate(row.updated_at)} sortable />
+          <Column
+            header="Tipe"
+            body={(row) => (
+              <Tag value={row.is_auto ? 'Otomatis' : 'Manual'} severity={row.is_auto ? 'info' : 'secondary'} />
+            )}
+          />
+          <Column
+            header="Status"
+            body={(row) => {
+              const s = getStatusConfig(row.status);
+              return <Tag value={s.label} severity={s.severity} />;
+            }}
+            sortable sortField="status"
+          />
+          <Column field="created_at" header="Dibuat"    body={(row) => formatDate(row.created_at)} sortable />
+          <Column field="updated_at" header="Diupdate"  body={(row) => formatDate(row.updated_at)} sortable />
         </DataTable>
       </div>
     </div>

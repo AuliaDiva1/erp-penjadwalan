@@ -6,18 +6,11 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 
-const operationTypeOptions = [
-  { label: 'Grinding',  value: 'Grinding' },
-  { label: 'Additive',  value: 'Additive' },
-  { label: 'Lathe',     value: 'Lathe' },
-  { label: 'Milling',   value: 'Milling' },
-  { label: 'Drilling',  value: 'Drilling' },
-];
-
 const statusOptions = [
   { label: 'Active',      value: 'active' },
   { label: 'Inactive',    value: 'inactive' },
   { label: 'Maintenance', value: 'maintenance' },
+  { label: 'Breakdown',   value: 'breakdown' }, // tambah sesuai backend
 ];
 
 const generateMachineId = (machineList) => {
@@ -36,10 +29,9 @@ const generateMachineId = (machineList) => {
 const defaultForm = {
   machine_id: '',
   machine_name: '',
-  operation_type: '',
   capacity_per_hour: null,
   energy_rate: null,
-  machine_availability: 95,
+  machine_availability: 100, // default 100, bukan 95
   status: 'active',
 };
 
@@ -54,10 +46,9 @@ const FormMachine = ({ visible, onHide, onSave, selectedData, machineList }) => 
       setForm({
         machine_id:           selectedData.machine_id || '',
         machine_name:         selectedData.machine_name || '',
-        operation_type:       selectedData.operation_type || '',
         capacity_per_hour:    selectedData.capacity_per_hour || null,
         energy_rate:          selectedData.energy_rate || null,
-        machine_availability: selectedData.machine_availability ?? 95,
+        machine_availability: selectedData.machine_availability ?? 100,
         status:               selectedData.status || 'active',
       });
     } else {
@@ -68,10 +59,9 @@ const FormMachine = ({ visible, onHide, onSave, selectedData, machineList }) => 
 
   const validate = () => {
     const newErrors = {};
-    if (!form.machine_name.trim()) newErrors.machine_name = 'Nama mesin wajib diisi';
-    if (!form.operation_type)      newErrors.operation_type = 'Operation type wajib dipilih';
-    if (!form.capacity_per_hour)   newErrors.capacity_per_hour = 'Kapasitas wajib diisi';
-    if (!form.energy_rate)         newErrors.energy_rate = 'Energy rate wajib diisi';
+    if (!form.machine_name.trim())  newErrors.machine_name = 'Nama mesin wajib diisi';
+    if (!form.capacity_per_hour)    newErrors.capacity_per_hour = 'Kapasitas wajib diisi';
+    if (!form.energy_rate)          newErrors.energy_rate = 'Energy rate wajib diisi';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -118,19 +108,6 @@ const FormMachine = ({ visible, onHide, onSave, selectedData, machineList }) => 
           {errors.machine_name && <small className="p-error">{errors.machine_name}</small>}
         </div>
 
-        {/* Operation Type */}
-        <div className="field mb-4">
-          <label className="font-bold block mb-2">Operation Type <span className="text-red-500">*</span></label>
-          <Dropdown
-            value={form.operation_type}
-            options={operationTypeOptions}
-            onChange={(e) => set('operation_type', e.value)}
-            placeholder="-- Pilih Operation Type --"
-            className={errors.operation_type ? 'p-invalid' : ''}
-          />
-          {errors.operation_type && <small className="p-error">{errors.operation_type}</small>}
-        </div>
-
         {/* Kapasitas per Jam */}
         <div className="field mb-4">
           <label className="font-bold block mb-2">Kapasitas per Jam <span className="text-red-500">*</span></label>
@@ -167,6 +144,8 @@ const FormMachine = ({ visible, onHide, onSave, selectedData, machineList }) => 
             onValueChange={(e) => set('machine_availability', e.value)}
             min={0}
             max={100}
+            minFractionDigits={1}
+            maxFractionDigits={2}
             suffix="%"
           />
         </div>

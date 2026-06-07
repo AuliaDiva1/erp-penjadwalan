@@ -1,3 +1,4 @@
+// MonitoringJadwalPage.jsx
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { DataTable } from 'primereact/datatable';
@@ -6,17 +7,28 @@ import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
-import { Dialog } from 'primereact/dialog';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import DetailJadwal from './components/DetailJadwal';
+import RevisiDialog from './components/RevisiDialog';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
+const STATUS_CONFIG = {
+  draft:   { label: 'Draft',   severity: 'secondary' },
+  final:   { label: 'Final',   severity: 'success'   },
+  revised: { label: 'Revised', severity: 'warning'   },
+};
+
 export default function MonitoringJadwalPage() {
-  const toast = useRef(null);
+  const toast                             = useRef(null);
   const [jadwal, setJadwal]               = useState([]);
   const [loading, setLoading]             = useState(false);
   const [globalFilter, setGlobalFilter]   = useState('');
   const [detailVisible, setDetailVisible] = useState(false);
-  const [selectedData, setSelectedData]   = useState(null);
+  const [revisiVisible, setRevisiVisible] = useState(false);
+  const [selected, setSelected]           = useState(null);
+  const [revisiNote, setRevisiNote]       = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
@@ -26,8 +38,8 @@ export default function MonitoringJadwalPage() {
       const res  = await fetch(`${BASE_URL}/schedules`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
-      const data = await res.json();
-      if (data.success) setJadwal(data.data);
+      const json = await res.json();
+      if (json.success) setJadwal(json.data);
     } catch {
       toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data jadwal' });
     } finally {
@@ -37,6 +49,93 @@ export default function MonitoringJadwalPage() {
 
   useEffect(() => { fetchJadwal(); }, []);
 
+  const handleValidasi = (row) => {
+    confirmDialog({
+      message: `Jadwal ${row.schedule_code} akan dijadikan Final. Lanjutkan?`,
+      header:  'Konfirmasi Validasi',
+      icon:    'pi pi-check-circle',
+      accept:  async () => {
+        setActionLoading(true);
+        try {
+          const res  = await fetch(`${BASE_URL}/schedules/${row.id}/validate`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${getToken()}` },
+          });
+          const json = await res.json();
+          if (json.success) {
+            toast.current.show({ severity: 'success', summary: 'Berhasil', detail: `${row.schedule_code} divalidasi` });
+            fetchJadwal();
+            setDetailVisible(false);
+          } else {
+            toast.current.show({ severity: 'error', summary: 'Gagal', detail: json.message });
+          }
+        } catch {
+          toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memvalidasi jadwal' });
+        } finally {
+          setActionLoading(false);
+        }
+      },
+    });
+  };
+
+  const handleRevisiSubmit = async () => {
+    if (!revisiNote.trim()) {
+      toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Catatan revisi wajib diisi' });
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const res  = await fetch(`${BASE_URL}/schedules/${selected.id}/revise`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body:    JSON.stringify({ revision_note: revisiNote }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.current.show({ severity: 'success', summary: 'Berhasil', detail: 'Jadwal diajukan untuk revisi' });
+        setRevisiVisible(false);
+        setRevisiNote('');
+        setDetailVisible(false);
+        fetchJadwal();
+      } else {
+        toast.current.show({ severity: 'error', summary: 'Gagal', detail: json.message });
+      }
+    } catch {
+      toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal mengajukan revisi' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleHapus = (row) => {
+    confirmDialog({
+      message:         `Jadwal ${row.schedule_code} akan dihapus permanen. Lanjutkan?`,
+      header:          'Konfirmasi Hapus',
+      icon:            'pi pi-trash',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        setActionLoading(true);
+        try {
+          const res  = await fetch(`${BASE_URL}/schedules/${row.id}`, {
+            method:  'DELETE',
+            headers: { Authorization: `Bearer ${getToken()}` },
+          });
+          const json = await res.json();
+          if (json.success) {
+            toast.current.show({ severity: 'success', summary: 'Berhasil', detail: `${row.schedule_code} dihapus` });
+            fetchJadwal();
+          } else {
+            toast.current.show({ severity: 'error', summary: 'Gagal', detail: json.message });
+          }
+        } catch {
+          toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal menghapus jadwal' });
+        } finally {
+          setActionLoading(false);
+        }
+      },
+    });
+  };
+
   const stats = {
     total:   jadwal.length,
     draft:   jadwal.filter(j => j.status_jadwal === 'draft').length,
@@ -44,67 +143,41 @@ export default function MonitoringJadwalPage() {
     revised: jadwal.filter(j => j.status_jadwal === 'revised').length,
   };
 
-  const formatDate = (val) =>
-    val ? new Date(val).toLocaleString('id-ID', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }) : '-';
-
-  const statusConfig = {
-    draft:   { label: 'Draft',   severity: 'secondary' },
-    final:   { label: 'Final',   severity: 'success'   },
-    revised: { label: 'Revised', severity: 'warning'   },
-  };
-
-  const statusTemplate = (row) => {
-    const s = statusConfig[row.status_jadwal] || { label: row.status_jadwal, severity: 'info' };
+  const statusTemplate  = (row) => {
+    const s = STATUS_CONFIG[row.status_jadwal] || { label: row.status_jadwal, severity: 'info' };
     return <Tag value={s.label} severity={s.severity} />;
   };
 
-  const finalTemplate = (row) => (
-    <Tag
-      value={row.is_final ? 'Final' : 'Draft'}
-      severity={row.is_final ? 'success' : 'secondary'}
-    />
-  );
-
-  const makespanTemplate = (row) => (
-    <span className="font-semibold">
-      {row.makespan} <span className="text-color-secondary text-sm font-normal">menit</span>
-    </span>
-  );
-
-  const dateTemplate = (row) => (
-    <span className="text-sm">
-      {new Date(row.created_at).toLocaleDateString('id-ID', {
-        day: '2-digit', month: 'short', year: 'numeric',
-      })}
-    </span>
-  );
-
   const actionTemplate = (row) => (
-    <Button
-      icon="pi pi-eye"
-      rounded text severity="info"
-      tooltip="Lihat Detail"
-      onClick={() => { setSelectedData(row); setDetailVisible(true); }}
-    />
+    <div className="flex gap-1">
+      <Button icon="pi pi-eye" rounded text severity="info" tooltip="Detail"
+        onClick={() => { setSelected(row); setDetailVisible(true); }} />
+      {!row.is_final && (
+        <Button icon="pi pi-check" rounded text severity="success" tooltip="Validasi"
+          onClick={() => handleValidasi(row)} loading={actionLoading} />
+      )}
+      {row.is_final && (
+        <Button icon="pi pi-replay" rounded text severity="warning" tooltip="Ajukan Revisi"
+          onClick={() => { setSelected(row); setRevisiNote(''); setRevisiVisible(true); }} />
+      )}
+      {!row.is_final && (
+        <Button icon="pi pi-trash" rounded text severity="danger" tooltip="Hapus"
+          onClick={() => handleHapus(row)} loading={actionLoading} />
+      )}
+    </div>
   );
 
   const header = (
     <div className="flex justify-content-between align-items-center">
       <span className="text-sm text-color-secondary">Total {jadwal.length} jadwal</span>
-      <div className="flex align-items-center gap-2">
+      <div className="flex gap-2 align-items-center">
         <Button icon="pi pi-refresh" text onClick={fetchJadwal} loading={loading} tooltip="Refresh" />
-        <span className="p-input-icon-left">
-          <i className="pi pi-search" />
-          <InputText
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            placeholder="Cari jadwal..."
-            style={{ width: '220px' }}
-          />
-        </span>
+        <InputText
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          placeholder="Cari jadwal..."
+          style={{ width: '220px' }}
+        />
       </div>
     </div>
   );
@@ -112,29 +185,26 @@ export default function MonitoringJadwalPage() {
   return (
     <div>
       <Toast ref={toast} />
+      <ConfirmDialog />
 
       <div className="mb-4">
-        <h2 className="m-0 mb-1">Monitoring Status Jadwal</h2>
+        <h2 className="m-0 mb-1">Monitoring Jadwal Produksi</h2>
         <p className="m-0 text-color-secondary text-sm">
-          Pantau seluruh jadwal produksi yang dibuat oleh Manajer Produksi
+          Kelola dan pantau seluruh jadwal produksi — validasi, revisi, dan hapus jadwal
         </p>
       </div>
 
       <div className="grid mb-4">
         {[
-          { label: 'Total Jadwal', value: stats.total,   icon: 'pi-calendar',    color: '#6366f1', bg: '#eef2ff' },
-          { label: 'Draft',        value: stats.draft,   icon: 'pi-file',         color: '#64748b', bg: '#f1f5f9' },
-          { label: 'Final',        value: stats.final,   icon: 'pi-check-circle', color: '#22c55e', bg: '#f0fdf4' },
-          { label: 'Revised',      value: stats.revised, icon: 'pi-refresh',      color: '#f59e0b', bg: '#fffbeb' },
+          { label: 'Total Jadwal', value: stats.total,   icon: 'pi-calendar',     color: '#6366f1' },
+          { label: 'Draft',        value: stats.draft,   icon: 'pi-file',         color: '#64748b' },
+          { label: 'Final',        value: stats.final,   icon: 'pi-check-circle', color: '#22c55e' },
+          { label: 'Revised',      value: stats.revised, icon: 'pi-refresh',      color: '#f59e0b' },
         ].map((s, i) => (
           <div key={i} className="col-12 md:col-6 lg:col-3">
-            <div className="card p-4 flex align-items-center gap-3" style={{ borderLeft: `4px solid ${s.color}` }}>
-              <div
-                className="flex align-items-center justify-content-center border-round"
-                style={{ width: 48, height: 48, background: s.bg }}
-              >
-                <i className={`pi ${s.icon}`} style={{ fontSize: '1.4rem', color: s.color }} />
-              </div>
+            <div className="card p-4 flex align-items-center gap-3"
+              style={{ borderLeft: `4px solid ${s.color}` }}>
+              <i className={`pi ${s.icon} text-3xl`} style={{ color: s.color }} />
               <div>
                 <div className="text-2xl font-bold">{s.value}</div>
                 <div className="text-color-secondary text-sm">{s.label}</div>
@@ -146,86 +216,43 @@ export default function MonitoringJadwalPage() {
 
       <div className="card">
         <DataTable
-          value={jadwal}
-          loading={loading}
-          paginator
-          rows={10}
-          rowsPerPageOptions={[5, 10, 25]}
-          stripedRows
-          globalFilter={globalFilter}
-          header={header}
-          emptyMessage="Belum ada data jadwal produksi"
-          sortField="id"
-          sortOrder={-1}
+          value={jadwal} loading={loading}
+          paginator rows={10} rowsPerPageOptions={[5, 10, 25]}
+          stripedRows globalFilter={globalFilter} header={header}
+          emptyMessage="Belum ada data jadwal"
+          sortField="id" sortOrder={-1}
         >
-          <Column field="schedule_code"     header="Kode Jadwal"    sortable style={{ fontWeight: 600 }} />
-          <Column field="makespan"          header="Makespan"        body={makespanTemplate} sortable />
-          <Column field="total_jobs"        header="Total Jobs"      sortable />
-          <Column field="total_machines"    header="Total Mesin"     sortable />
-          <Column field="status_jadwal"     header="Status"          body={statusTemplate} sortable />
-          <Column field="is_final"          header="Final"           body={finalTemplate} />
-          <Column field="revision_count"    header="Revisi ke-"      sortable />
-          <Column field="validated_by_name" header="Divalidasi Oleh" body={(r) => r.validated_by_name || <span className="text-color-secondary">-</span>} />
-          <Column field="created_at"        header="Dibuat"          body={dateTemplate} sortable />
-          <Column header="Aksi"             body={actionTemplate}    style={{ width: '80px' }} />
+          <Column field="schedule_code"     header="Kode"      sortable style={{ fontWeight: 600, width: '120px' }} />
+          <Column field="makespan"          header="Makespan"   body={(r) => `${r.makespan} menit`} sortable />
+          <Column field="total_jobs"        header="Jobs"       sortable style={{ width: '70px' }} />
+          <Column field="total_machines"    header="Mesin"      sortable style={{ width: '70px' }} />
+          <Column field="status_jadwal"     header="Status"     body={statusTemplate} sortable />
+          <Column field="revision_count"    header="Revisi"     sortable style={{ width: '70px' }} />
+          <Column field="validated_by_name" header="Divalidasi" body={(r) => r.validated_by_name || '-'} />
+          <Column field="created_at"        header="Dibuat"
+            body={(r) => new Date(r.created_at).toLocaleDateString('id-ID')} sortable />
+          <Column header="Aksi"             body={actionTemplate} style={{ width: '130px' }} />
         </DataTable>
       </div>
 
-      {/* DETAIL DIALOG */}
-      <Dialog
-        header={`Detail Jadwal — ${selectedData?.schedule_code}`}
+      <DetailJadwal
         visible={detailVisible}
-        style={{ width: '500px' }}
-        modal
         onHide={() => setDetailVisible(false)}
-        draggable={false}
-        dismissableMask
-      >
-        {selectedData && (
-          <div className="p-1">
-            <div className="flex justify-content-between align-items-center p-3 border-round mb-4"
-              style={{ background: 'var(--surface-ground)' }}>
-              <div>
-                <div className="text-2xl font-bold">{selectedData.schedule_code}</div>
-                <div className="text-color-secondary text-sm mt-1">Jadwal Produksi</div>
-              </div>
-              <Tag
-                value={statusConfig[selectedData.status_jadwal]?.label || selectedData.status_jadwal}
-                severity={statusConfig[selectedData.status_jadwal]?.severity || 'info'}
-              />
-            </div>
+        data={selected}
+        onValidasi={() => handleValidasi(selected)}
+        onRevisi={() => { setRevisiNote(''); setRevisiVisible(true); }}
+        actionLoading={actionLoading}
+      />
 
-            {[
-              { label: 'Makespan',         value: `${selectedData.makespan} menit` },
-              { label: 'Total Jobs',        value: selectedData.total_jobs },
-              { label: 'Total Mesin',       value: selectedData.total_machines },
-              { label: 'Status Final',      value: selectedData.is_final ? 'Sudah Final' : 'Belum Final' },
-              { label: 'Revisi ke-',        value: selectedData.revision_count || 0 },
-              { label: 'Divalidasi Oleh',   value: selectedData.validated_by_name || '-' },
-              { label: 'Waktu Validasi',    value: formatDate(selectedData.validated_at) },
-              { label: 'Dibuat',            value: formatDate(selectedData.created_at) },
-              { label: 'Diperbarui',        value: formatDate(selectedData.updated_at) },
-            ].map((item, i) => (
-              <div key={i} className="flex justify-content-between align-items-center py-2"
-                style={{ borderBottom: '1px solid var(--surface-border)' }}>
-                <span className="text-color-secondary text-sm">{item.label}</span>
-                <span className="font-semibold text-sm">{item.value ?? '-'}</span>
-              </div>
-            ))}
-
-            {selectedData.revision_note && (
-              <div className="mt-3 p-3 border-round" style={{ background: '#fff8e1', border: '1px solid #ffe082' }}>
-                <div className="text-xs font-semibold text-color-secondary mb-1 uppercase">Catatan Revisi</div>
-                <div className="text-sm">{selectedData.revision_note}</div>
-              </div>
-            )}
-
-            <div className="flex justify-content-end mt-4">
-              <Button label="Tutup" icon="pi pi-times" className="p-button-text" onClick={() => setDetailVisible(false)} />
-            </div>
-          </div>
-        )}
-      </Dialog>
+      <RevisiDialog
+        visible={revisiVisible}
+        onHide={() => setRevisiVisible(false)}
+        scheduleCode={selected?.schedule_code}
+        revisiNote={revisiNote}
+        setRevisiNote={setRevisiNote}
+        onSubmit={handleRevisiSubmit}
+        actionLoading={actionLoading}
+      />
     </div>
   );
 }

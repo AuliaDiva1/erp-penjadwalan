@@ -1,21 +1,25 @@
 import { db } from '../core/config/knex.js';
 
+const MACHINE_FIELDS = [
+  'id', 'machine_id', 'machine_name', 'capacity_per_hour',
+  'energy_rate', 'machine_availability', 'status',
+  'created_at', 'updated_at'
+];
+
 export const getAllMachines = async () =>
-  db('machines')
-    .select('id', 'machine_id', 'machine_name', 'operation_type', 'capacity_per_hour', 'energy_rate', 'machine_availability', 'status', 'is_active', 'created_at', 'updated_at')
-    .orderBy('created_at', 'desc');
+  db('machines').select(MACHINE_FIELDS).orderBy('created_at', 'desc');
 
 export const getMachineById = async (id) =>
-  db('machines')
-    .where({ id })
-    .select('id', 'machine_id', 'machine_name', 'operation_type', 'capacity_per_hour', 'energy_rate', 'machine_availability', 'status', 'is_active', 'created_at', 'updated_at')
-    .first();
+  db('machines').where({ id }).select(MACHINE_FIELDS).first();
 
 export const getMachineByMachineId = async (machine_id) =>
   db('machines').where({ machine_id }).first();
 
-export const addMachine = async ({ machine_id, machine_name, operation_type, capacity_per_hour, energy_rate, machine_availability, status }) => {
-  const [id] = await db('machines').insert({ machine_id, machine_name, operation_type, capacity_per_hour, energy_rate, machine_availability, status, is_active: true });
+export const addMachine = async ({ machine_id, machine_name, capacity_per_hour, energy_rate, machine_availability, status }) => {
+  const [id] = await db('machines').insert({
+    machine_id, machine_name, capacity_per_hour,
+    energy_rate, machine_availability, status
+  });
   return getMachineById(id);
 };
 
@@ -30,11 +34,6 @@ export const deleteMachine = async (id) =>
 export const toggleMachineStatus = async (id, status) =>
   db('machines').where({ id }).update({ status, updated_at: db.fn.now() });
 
-export const getMachinesByOperationType = async (operation_type) =>
-  db('machines')
-    .where({ operation_type })
-    .select('id', 'machine_id', 'machine_name', 'operation_type', 'capacity_per_hour', 'energy_rate', 'machine_availability', 'status', 'is_active', 'created_at', 'updated_at');
-
 export const countByStatus = async (status) => {
   const result = await db('machines').where({ status }).count('id as total');
   return Number(result[0].total);
@@ -42,5 +41,5 @@ export const countByStatus = async (status) => {
 
 export const getActiveMachines = async () =>
   db('machines')
-    .where({ status: 'active', is_active: true })
-    .select('id', 'machine_id', 'machine_name', 'operation_type', 'capacity_per_hour', 'energy_rate', 'machine_availability', 'status');
+    .where({ status: 'active' })  // hapus is_active
+    .select('id', 'machine_id', 'machine_name', 'capacity_per_hour', 'energy_rate', 'machine_availability', 'status');

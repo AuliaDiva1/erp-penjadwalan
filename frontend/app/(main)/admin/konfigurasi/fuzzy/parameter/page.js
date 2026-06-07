@@ -9,9 +9,8 @@ import { Tag } from 'primereact/tag';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
-const OPERATION_TYPES = ['Grinding', 'Additive', 'Lathe', 'Milling', 'Drilling'];
-const HIMPUNAN       = ['Rendah', 'Sedang', 'Tinggi'];
-const PRIORITAS      = ['Rendah', 'Sedang', 'Tinggi'];
+const HIMPUNAN = ['Rendah', 'Sedang', 'Tinggi'];
+const PRIORITAS = ['Rendah', 'Sedang', 'Tinggi'];
 
 const DEFAULT_RULES = [];
 HIMPUNAN.forEach(pt => {
@@ -33,9 +32,13 @@ HIMPUNAN.forEach(pt => {
 });
 
 const DEFAULT_MF = {
-  processing_time:      { rendah: [20, 20, 57],  sedang: [20, 57, 95],   tinggi: [57, 95, 120]  },
-  energy_consumption:   { rendah: [2.01, 2.01, 6.33], sedang: [2.01, 6.33, 10.66], tinggi: [6.33, 10.66, 14.98] },
-  machine_availability: { rendah: [80, 80, 86],  sedang: [80, 86, 93],   tinggi: [86, 93, 99]   },
+  processing_time:      { rendah: [20, 20, 57],        sedang: [20, 57, 95],         tinggi: [57, 95, 120]         },
+  energy_consumption:   { rendah: [2.01, 2.01, 6.33],  sedang: [2.01, 6.33, 10.66], tinggi: [6.33, 10.66, 14.98]  },
+  machine_availability: { rendah: [80, 80, 86],         sedang: [80, 86, 93],         tinggi: [86, 93, 99]          },
+};
+
+const DEFAULT_BOBOT = {
+  Drilling: 1.20, Lathe: 1.15, Additive: 1.10, Milling: 1.05, Grinding: 1.00,
 };
 
 export default function FuzzyParameterPage() {
@@ -89,9 +92,7 @@ export default function FuzzyParameterPage() {
         body: JSON.stringify({
           fuzzy_rules:          rules,
           membership_functions: mf,
-          bobot_operation_type: config?.bobot_operation_type || {
-            Additive: 1.20, Milling: 1.15, Grinding: 1.10, Lathe: 1.00, Drilling: 0.95,
-          },
+          bobot_operation_type: config?.bobot_operation_type || DEFAULT_BOBOT,
           versi: `v${new Date().toISOString().slice(0, 10)}`,
         }),
       });

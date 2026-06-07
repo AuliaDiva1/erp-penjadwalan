@@ -7,25 +7,27 @@ import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 
 const defaultForm = {
-  material_name: '',
-  satuan_id: null,
-  current_stock: 0,
-  min_stock_level: 10,
+  material_name:    '',
+  operation_type_id: null,
+  satuan_id:        null,
+  current_stock:    0,
+  min_stock_level:  10,
 };
 
-const FormMaterial = ({ visible, onHide, onSave, selectedData, satuanList }) => {
-  const [form, setForm] = useState(defaultForm);
+const FormMaterial = ({ visible, onHide, onSave, selectedData, satuanList, operationTypeList }) => {
+  const [form,    setForm]    = useState(defaultForm);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [errors,  setErrors]  = useState({});
 
   useEffect(() => {
     if (!visible) return;
     if (selectedData) {
       setForm({
-        material_name:   selectedData.material_name || '',
-        satuan_id:       selectedData.satuan_id || null,
-        current_stock:   selectedData.current_stock ?? 0,
-        min_stock_level: selectedData.min_stock_level ?? 10,
+        material_name:     selectedData.material_name    || '',
+        operation_type_id: selectedData.operation_type_id ?? null,
+        satuan_id:         selectedData.satuan_id        ?? null,
+        current_stock:     selectedData.current_stock    ?? 0,
+        min_stock_level:   selectedData.min_stock_level  ?? 10,
       });
     } else {
       setForm(defaultForm);
@@ -36,7 +38,7 @@ const FormMaterial = ({ visible, onHide, onSave, selectedData, satuanList }) => 
   const validate = () => {
     const newErrors = {};
     if (!form.material_name.trim()) newErrors.material_name = 'Nama bahan baku wajib diisi';
-    if (!form.satuan_id) newErrors.satuan_id = 'Satuan wajib dipilih';
+    if (!form.satuan_id)            newErrors.satuan_id     = 'Satuan wajib dipilih';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -58,11 +60,21 @@ const FormMaterial = ({ visible, onHide, onSave, selectedData, satuanList }) => 
     value: s.id,
   }));
 
+  const opTypeOptions = [
+    { label: '— Tidak Dikaitkan —', value: null },
+    ...(operationTypeList ?? [])
+      .filter((o) => o.is_active)
+      .map((o) => ({
+        label: `${o.kode_operasi} - ${o.nama_operasi}`,
+        value: o.id,
+      })),
+  ];
+
   return (
     <Dialog
       header={selectedData ? `Edit: ${selectedData.material_name}` : 'Tambah Bahan Baku Baru'}
       visible={visible}
-      style={{ width: '440px' }}
+      style={{ width: '460px' }}
       modal
       onHide={onHide}
       draggable={false}
@@ -70,16 +82,18 @@ const FormMaterial = ({ visible, onHide, onSave, selectedData, satuanList }) => 
     >
       <div className="p-fluid">
 
-        {/* Kode - hanya tampil saat edit, readonly */}
+        {/* Kode — readonly, hanya saat edit */}
         {selectedData && (
           <div className="field mb-4">
             <label className="font-bold block mb-2">Kode Bahan Baku</label>
-            <InputText value={selectedData.kode_bahan_baku} disabled className="p-disabled bg-gray-100" />
+            <InputText value={selectedData.kode_bahan_baku} disabled className="p-disabled" />
           </div>
         )}
 
         <div className="field mb-4">
-          <label className="font-bold block mb-2">Nama Bahan Baku <span className="text-red-500">*</span></label>
+          <label className="font-bold block mb-2">
+            Nama Bahan Baku <span className="text-red-500">*</span>
+          </label>
           <InputText
             value={form.material_name}
             onChange={(e) => set('material_name', e.target.value)}
@@ -90,7 +104,23 @@ const FormMaterial = ({ visible, onHide, onSave, selectedData, satuanList }) => 
         </div>
 
         <div className="field mb-4">
-          <label className="font-bold block mb-2">Satuan <span className="text-red-500">*</span></label>
+          <label className="font-bold block mb-2">Operation Type</label>
+          <Dropdown
+            value={form.operation_type_id}
+            options={opTypeOptions}
+            onChange={(e) => set('operation_type_id', e.value)}
+            placeholder="— Tidak Dikaitkan —"
+            filter
+          />
+          <small className="text-color-secondary">
+            Opsional — kaitkan bahan baku dengan jenis operasi tertentu
+          </small>
+        </div>
+
+        <div className="field mb-4">
+          <label className="font-bold block mb-2">
+            Satuan <span className="text-red-500">*</span>
+          </label>
           <Dropdown
             value={form.satuan_id}
             options={satuanOptions}
@@ -123,7 +153,13 @@ const FormMaterial = ({ visible, onHide, onSave, selectedData, satuanList }) => 
         </div>
 
         <div className="flex justify-content-end gap-2 mt-5">
-          <Button label="Batal" icon="pi pi-times" className="p-button-text" onClick={onHide} disabled={loading} />
+          <Button
+            label="Batal"
+            icon="pi pi-times"
+            className="p-button-text"
+            onClick={onHide}
+            disabled={loading}
+          />
           <Button
             label={selectedData ? 'Simpan Perubahan' : 'Simpan Bahan Baku'}
             icon={loading ? 'pi pi-spin pi-spinner' : 'pi pi-check'}

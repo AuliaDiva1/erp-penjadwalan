@@ -12,11 +12,11 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function NotifikasiPengadaanPage() {
   const toast = useRef(null);
-  const [data, setData]                         = useState([]);
-  const [loading, setLoading]                   = useState(false);
-  const [globalFilter, setGlobalFilter]         = useState('');
+  const [data,    setData]               = useState([]);
+  const [loading, setLoading]            = useState(false);
+  const [globalFilter, setGlobalFilter]  = useState('');
   const [konfirmasiVisible, setKonfirmasiVisible] = useState(false);
-  const [selectedData, setSelectedData]         = useState(null);
+  const [selectedData, setSelectedData]  = useState(null);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
@@ -44,18 +44,22 @@ export default function NotifikasiPengadaanPage() {
   };
 
   const handleUpdateStatus = async (payload) => {
-    const res  = await fetch(`${BASE_URL}/procurements/${selectedData.id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (json.success) {
-      toast.current.show({ severity: 'success', summary: 'Berhasil', detail: 'Status pengadaan diperbarui' });
-      setKonfirmasiVisible(false);
-      fetchNotifikasi();
-    } else {
-      toast.current.show({ severity: 'error', summary: 'Gagal', detail: json.message });
+    try {
+      const res  = await fetch(`${BASE_URL}/procurements/${selectedData.id}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body:    JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.current.show({ severity: 'success', summary: 'Berhasil', detail: 'Status pengadaan diperbarui' });
+        setKonfirmasiVisible(false);
+        fetchNotifikasi();
+      } else {
+        toast.current.show({ severity: 'error', summary: 'Gagal', detail: json.message });
+      }
+    } catch {
+      toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memperbarui status' });
     }
   };
 
@@ -73,42 +77,6 @@ export default function NotifikasiPengadaanPage() {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     }) : '-';
-
-  const statusTemplate = (row) => {
-    const s = getStatusConfig(row.status);
-    return <Tag value={s.label} severity={s.severity} />;
-  };
-
-  const tipeTemplate = (row) => (
-    <Tag
-      value={row.is_auto ? 'Otomatis' : 'Manual'}
-      severity={row.is_auto ? 'info' : 'secondary'}
-    />
-  );
-
-  const stokTemplate = (row) => (
-    <div>
-      <div className="font-semibold text-red-500">{row.current_stock_at_trigger} {row.nama_satuan}</div>
-      <div className="text-xs text-color-secondary">saat notif dibuat</div>
-    </div>
-  );
-
-  const qtyTemplate = (row) => (
-    <span className="font-semibold text-primary">
-      +{row.required_qty} {row.nama_satuan}
-    </span>
-  );
-
-  const actionTemplate = (row) => (
-    <div className="flex gap-1">
-      <Button
-        icon="pi pi-check-circle"
-        rounded text severity="success"
-        tooltip="Proses Pengadaan"
-        onClick={() => { setSelectedData(row); setKonfirmasiVisible(true); }}
-      />
-    </div>
-  );
 
   const header = (
     <div className="flex justify-content-between align-items-center">
@@ -141,9 +109,9 @@ export default function NotifikasiPengadaanPage() {
 
       <div className="grid mb-4">
         {[
-          { label: 'Total Notifikasi', value: stats.total,       icon: 'pi-bell',         color: '#6366f1', bg: '#eef2ff' },
-          { label: 'Pending',          value: stats.pending,     icon: 'pi-clock',        color: '#f59e0b', bg: '#fffbeb' },
-          { label: 'Sedang Diproses',  value: stats.in_progress, icon: 'pi-cog',          color: '#3b82f6', bg: '#eff6ff' },
+          { label: 'Total Notifikasi', value: stats.total,       icon: 'pi-bell',  color: '#6366f1', bg: '#eef2ff' },
+          { label: 'Pending',          value: stats.pending,     icon: 'pi-clock', color: '#f59e0b', bg: '#fffbeb' },
+          { label: 'Sedang Diproses',  value: stats.in_progress, icon: 'pi-cog',   color: '#3b82f6', bg: '#eff6ff' },
         ].map((s, i) => (
           <div key={i} className="col-12 md:col-4">
             <div className="card p-4 flex align-items-center gap-3" style={{ borderLeft: `4px solid ${s.color}` }}>
@@ -183,14 +151,55 @@ export default function NotifikasiPengadaanPage() {
             sortField="created_at"
             sortOrder={-1}
           >
-            <Column field="kode_bahan_baku" header="Kode"          sortable style={{ width: '100px', fontWeight: 600 }} />
-            <Column field="material_name"   header="Bahan Baku"    sortable />
-            <Column header="Stok Saat Notif" body={stokTemplate} />
-            <Column header="Qty Dibutuhkan"  body={qtyTemplate} />
-            <Column header="Tipe"            body={tipeTemplate} />
-            <Column header="Status"          body={statusTemplate} sortable sortField="status" />
-            <Column field="created_at"       header="Tanggal"      body={(row) => formatDate(row.created_at)} sortable />
-            <Column header="Aksi"            body={actionTemplate} style={{ width: '80px' }} />
+            <Column field="kode_bahan_baku" header="Kode"           sortable style={{ width: '100px', fontWeight: 600 }} />
+            <Column field="material_name"   header="Bahan Baku"     sortable />
+            <Column
+              header="Stok Saat Notif"
+              body={(row) => (
+                <span className="font-semibold text-red-500">
+                  {row.current_stock_at_trigger} {row.nama_satuan}
+                </span>
+              )}
+            />
+            <Column
+              header="Qty Dibutuhkan"
+              body={(row) => (
+                <span className="font-semibold text-primary">
+                  +{row.required_qty} {row.nama_satuan}
+                </span>
+              )}
+            />
+            <Column
+              header="Tipe"
+              body={(row) => (
+                <Tag value={row.is_auto ? 'Otomatis' : 'Manual'} severity={row.is_auto ? 'info' : 'secondary'} />
+              )}
+            />
+            <Column
+              header="Status"
+              body={(row) => {
+                const s = getStatusConfig(row.status);
+                return <Tag value={s.label} severity={s.severity} />;
+              }}
+            />
+            <Column
+              field="created_at"
+              header="Tanggal"
+              body={(row) => <span className="text-sm text-color-secondary">{formatDate(row.created_at)}</span>}
+              sortable
+            />
+            <Column
+              header="Aksi"
+              style={{ width: '80px' }}
+              body={(row) => (
+                <Button
+                  icon="pi pi-check-circle"
+                  rounded text severity="success"
+                  tooltip="Proses Pengadaan"
+                  onClick={() => { setSelectedData(row); setKonfirmasiVisible(true); }}
+                />
+              )}
+            />
           </DataTable>
         </div>
       )}

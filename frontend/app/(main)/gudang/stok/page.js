@@ -6,6 +6,7 @@ import { Button } from 'primereact/button';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { InputText } from 'primereact/inputtext';
+import { Dropdown } from 'primereact/dropdown';
 import { ProgressBar } from 'primereact/progressbar';
 import FormUpdateStock from './components/FormUpdateStock';
 
@@ -13,43 +14,62 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function StokGudangPage() {
   const toast = useRef(null);
-  const [materials, setMaterials]               = useState([]);
-  const [loading, setLoading]                   = useState(false);
-  const [globalFilter, setGlobalFilter]         = useState('');
+  const [materials,      setMaterials]      = useState([]);
+  const [operationTypes, setOperationTypes] = useState([]);
+  const [loading,        setLoading]        = useState(false);
+  const [globalFilter,   setGlobalFilter]   = useState('');
+  const [filterOpType,   setFilterOpType]   = useState(null);
   const [stockDialogVisible, setStockDialogVisible] = useState(false);
-  const [selectedData, setSelectedData]         = useState(null);
+  const [selectedData,   setSelectedData]   = useState(null);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
-  const fetchMaterials = async () => {
+  const fetchAll = async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${BASE_URL}/materials`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
-      if (data.success) setMaterials(data.data);
+      const [resMat, resOp] = await Promise.all([
+        fetch(`${BASE_URL}/materials`,         { headers: { Authorization: `Bearer ${getToken()}` } }),
+        fetch(`${BASE_URL}/operation-types`,   { headers: { Authorization: `Bearer ${getToken()}` } }),
+      ]);
+      const [dataMat, dataOp] = await Promise.all([resMat.json(), resOp.json()]);
+      if (dataMat.success) setMaterials(dataMat.data);
+      if (dataOp.success)  setOperationTypes(dataOp.data);
     } catch {
-      toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data stok' });
+      toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data' });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchMaterials(); }, []);
+  useEffect(() => { fetchAll(); }, []);
+
+  const opTypeOptions = [
+    { label: 'Semua Operasi', value: null },
+    { label: 'Tanpa Operasi', value: '__none__' },
+    ...operationTypes.map((o) => ({
+      label: `${o.kode_operasi} - ${o.nama_operasi}`,
+      value: o.id,
+    })),
+  ];
+
+  const filteredMaterials = materials.filter((m) => {
+    if (filterOpType === null)       return true;
+    if (filterOpType === '__none__') return !m.operation_type_id;
+    return m.operation_type_id === filterOpType;
+  });
 
   const stats = {
-    total:  materials.length,
-    aman:   materials.filter(m => m.current_stock > m.min_stock_level).length,
-    kritis: materials.filter(m => m.current_stock <= m.min_stock_level && m.current_stock > 0).length,
-    habis:  materials.filter(m => m.current_stock === 0).length,
+    total:  filteredMaterials.length,
+    aman:   filteredMaterials.filter(m => m.current_stock > m.min_stock_level).length,
+    kritis: filteredMaterials.filter(m => m.current_stock <= m.min_stock_level && m.current_stock > 0).length,
+    habis:  filteredMaterials.filter(m => m.current_stock === 0).length,
   };
 
   const handleUpdateStock = async (payload) => {
     const res  = await fetch(`${BASE_URL}/materials/${selectedData.id}/stock`, {
-      method: 'PATCH',
+      method:  'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-      body: JSON.stringify(payload),
+      body:    JSON.stringify(payload),
     });
     const data = await res.json();
     if (data.success) {
@@ -58,7 +78,7 @@ export default function StokGudangPage() {
         toast.current.show({ severity: 'warn', summary: 'Peringatan Stok', detail: data.warning, life: 6000 });
       }
       setStockDialogVisible(false);
-      fetchMaterials();
+      fetchAll();
     } else {
       toast.current.show({ severity: 'error', summary: 'Gagal', detail: data.message });
     }
@@ -95,32 +115,30 @@ export default function StokGudangPage() {
     );
   };
 
-  const statusTemplate = (row) => {
-    const s = getStokStatus(row);
-    return <Tag value={s.label} severity={s.severity} />;
-  };
-
-  const actionTemplate = (row) => (
-    <Button
-      icon="pi pi-box"
-      rounded text severity="warning"
-      tooltip="Update Stok"
-      onClick={() => { setSelectedData(row); setStockDialogVisible(true); }}
-    />
-  );
+  const opTypeTemplate = (row) =>
+    row.nama_operasi
+      ? <Tag value={row.nama_operasi} severity="info" />
+      : <span className="text-color-secondary text-sm">—</span>;
 
   const header = (
-    <div className="flex justify-content-between align-items-center">
-      <span className="text-sm text-color-secondary">Total {materials.length} bahan baku</span>
-      <div className="flex align-items-center gap-2">
-        <Button icon="pi pi-refresh" text onClick={fetchMaterials} tooltip="Refresh" loading={loading} />
+    <div className="flex justify-content-between align-items-center flex-wrap gap-2">
+      <span className="text-sm text-color-secondary">Total {filteredMaterials.length} bahan baku</span>
+      <div className="flex align-items-center gap-2 flex-wrap">
+        <Dropdown
+          value={filterOpType}
+          options={opTypeOptions}
+          onChange={(e) => setFilterOpType(e.value)}
+          placeholder="Filter Jenis Operasi"
+          style={{ width: '220px' }}
+        />
+        <Button icon="pi pi-refresh" text onClick={fetchAll} tooltip="Refresh" loading={loading} />
         <span className="p-input-icon-left">
           <i className="pi pi-search" />
           <InputText
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder="Cari bahan baku..."
-            style={{ width: '220px' }}
+            style={{ width: '200px' }}
           />
         </span>
       </div>
@@ -140,10 +158,10 @@ export default function StokGudangPage() {
 
       <div className="grid mb-4">
         {[
-          { label: 'Total Bahan Baku', value: stats.total,  icon: 'pi-box',                  color: '#6366f1', bg: '#eef2ff' },
-          { label: 'Stok Aman',        value: stats.aman,   icon: 'pi-check-circle',          color: '#22c55e', bg: '#f0fdf4' },
-          { label: 'Stok Kritis',      value: stats.kritis, icon: 'pi-exclamation-triangle',  color: '#f59e0b', bg: '#fffbeb' },
-          { label: 'Stok Habis',       value: stats.habis,  icon: 'pi-times-circle',          color: '#ef4444', bg: '#fef2f2' },
+          { label: 'Total Bahan Baku', value: stats.total,  icon: 'pi-box',                 color: '#6366f1', bg: '#eef2ff' },
+          { label: 'Stok Aman',        value: stats.aman,   icon: 'pi-check-circle',         color: '#22c55e', bg: '#f0fdf4' },
+          { label: 'Stok Kritis',      value: stats.kritis, icon: 'pi-exclamation-triangle', color: '#f59e0b', bg: '#fffbeb' },
+          { label: 'Stok Habis',       value: stats.habis,  icon: 'pi-times-circle',         color: '#ef4444', bg: '#fef2f2' },
         ].map((s, i) => (
           <div key={i} className="col-12 md:col-6 lg:col-3">
             <div className="card p-4 flex align-items-center gap-3" style={{ borderLeft: `4px solid ${s.color}` }}>
@@ -164,7 +182,7 @@ export default function StokGudangPage() {
 
       <div className="card">
         <DataTable
-          value={materials}
+          value={filteredMaterials}
           loading={loading}
           paginator
           rows={10}
@@ -176,14 +194,26 @@ export default function StokGudangPage() {
           sortField="current_stock"
           sortOrder={1}
         >
-          <Column field="kode_bahan_baku" header="Kode"           sortable style={{ width: '110px', fontWeight: 600 }} />
+          <Column field="kode_bahan_baku" header="Kode"            sortable style={{ width: '110px', fontWeight: 600 }} />
           <Column field="material_name"   header="Nama Bahan Baku" sortable />
+          <Column field="nama_operasi"    header="Jenis Operasi"   body={opTypeTemplate} sortable />
           <Column field="nama_satuan"     header="Satuan"          body={(row) => `${row.kode_satuan} - ${row.nama_satuan}`} />
-          <Column field="current_stock"   header="Stok Saat Ini"   body={stokTemplate}    sortable />
+          <Column field="current_stock"   header="Stok Saat Ini"   body={stokTemplate}   sortable />
           <Column field="min_stock_level" header="Batas Minimum"   body={(row) => `${row.min_stock_level} ${row.nama_satuan}`} sortable />
           <Column header="Progress Stok"  body={progressTemplate}  style={{ minWidth: '180px' }} />
-          <Column header="Status"         body={statusTemplate}    sortable sortField="current_stock" />
-          <Column header="Aksi"           body={actionTemplate}    style={{ width: '80px' }} />
+          <Column header="Status"         body={(row) => { const s = getStokStatus(row); return <Tag value={s.label} severity={s.severity} />; }} sortable sortField="current_stock" />
+          <Column
+            header="Aksi"
+            style={{ width: '80px' }}
+            body={(row) => (
+              <Button
+                icon="pi pi-box"
+                rounded text severity="warning"
+                tooltip="Update Stok"
+                onClick={() => { setSelectedData(row); setStockDialogVisible(true); }}
+              />
+            )}
+          />
         </DataTable>
       </div>
 

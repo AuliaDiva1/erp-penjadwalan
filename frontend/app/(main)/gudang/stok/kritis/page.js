@@ -6,6 +6,7 @@ import { Button } from 'primereact/button';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { InputText } from 'primereact/inputtext';
+import { Dropdown } from 'primereact/dropdown';
 import { ProgressBar } from 'primereact/progressbar';
 import FormUpdateStock from '../components/FormUpdateStock';
 
@@ -13,22 +14,27 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function StokKritisPage() {
   const toast = useRef(null);
-  const [materials, setMaterials]           = useState([]);
-  const [loading, setLoading]               = useState(false);
-  const [globalFilter, setGlobalFilter]     = useState('');
+  const [materials,      setMaterials]      = useState([]);
+  const [operationTypes, setOperationTypes] = useState([]);
+  const [loading,        setLoading]        = useState(false);
+  const [globalFilter,   setGlobalFilter]   = useState('');
+  const [filterOpType,   setFilterOpType]   = useState(null);
+  const [filterStatus,   setFilterStatus]   = useState(null);
   const [stockDialogVisible, setStockDialogVisible] = useState(false);
-  const [selectedData, setSelectedData]     = useState(null);
+  const [selectedData,   setSelectedData]   = useState(null);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
-  const fetchKritis = async () => {
+  const fetchAll = async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${BASE_URL}/materials/low-stock`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
-      if (data.success) setMaterials(data.data);
+      const [resMat, resOp] = await Promise.all([
+        fetch(`${BASE_URL}/materials/low-stock`, { headers: { Authorization: `Bearer ${getToken()}` } }),
+        fetch(`${BASE_URL}/operation-types`,     { headers: { Authorization: `Bearer ${getToken()}` } }),
+      ]);
+      const [dataMat, dataOp] = await Promise.all([resMat.json(), resOp.json()]);
+      if (dataMat.success) setMaterials(dataMat.data);
+      if (dataOp.success)  setOperationTypes(dataOp.data);
     } catch {
       toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data stok kritis' });
     } finally {
@@ -36,7 +42,30 @@ export default function StokKritisPage() {
     }
   };
 
-  useEffect(() => { fetchKritis(); }, []);
+  useEffect(() => { fetchAll(); }, []);
+
+  const opTypeOptions = [
+    { label: 'Semua Operasi', value: null },
+    { label: 'Tanpa Operasi', value: '__none__' },
+    ...operationTypes.map((o) => ({
+      label: `${o.kode_operasi} - ${o.nama_operasi}`,
+      value: o.id,
+    })),
+  ];
+
+  const statusOptions = [
+    { label: 'Semua Status', value: null      },
+    { label: 'Kritis',       value: 'kritis'  },
+    { label: 'Habis',        value: 'habis'   },
+  ];
+
+  const filteredMaterials = materials.filter((m) => {
+    if (filterOpType === '__none__' && m.operation_type_id) return false;
+    if (filterOpType && filterOpType !== '__none__' && m.operation_type_id !== filterOpType) return false;
+    if (filterStatus === 'kritis' && !(m.current_stock > 0 && m.current_stock <= m.min_stock_level)) return false;
+    if (filterStatus === 'habis'  && m.current_stock !== 0) return false;
+    return true;
+  });
 
   const stats = {
     total:  materials.length,
@@ -46,9 +75,9 @@ export default function StokKritisPage() {
 
   const handleUpdateStock = async (payload) => {
     const res  = await fetch(`${BASE_URL}/materials/${selectedData.id}/stock`, {
-      method: 'PATCH',
+      method:  'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-      body: JSON.stringify(payload),
+      body:    JSON.stringify(payload),
     });
     const data = await res.json();
     if (data.success) {
@@ -57,7 +86,7 @@ export default function StokKritisPage() {
         toast.current.show({ severity: 'warn', summary: 'Peringatan Stok', detail: data.warning, life: 6000 });
       }
       setStockDialogVisible(false);
-      fetchKritis();
+      fetchAll();
     } else {
       toast.current.show({ severity: 'error', summary: 'Gagal', detail: data.message });
     }
@@ -103,27 +132,37 @@ export default function StokKritisPage() {
     );
   };
 
-  const actionTemplate = (row) => (
-    <Button
-      icon="pi pi-box"
-      rounded text severity="warning"
-      tooltip="Update Stok"
-      onClick={() => { setSelectedData(row); setStockDialogVisible(true); }}
-    />
-  );
+  const opTypeTemplate = (row) =>
+    row.nama_operasi
+      ? <Tag value={row.nama_operasi} severity="info" />
+      : <span className="text-color-secondary text-sm">—</span>;
 
   const header = (
-    <div className="flex justify-content-between align-items-center">
-      <span className="text-sm text-color-secondary">Total {materials.length} bahan baku kritis</span>
-      <div className="flex align-items-center gap-2">
-        <Button icon="pi pi-refresh" text onClick={fetchKritis} tooltip="Refresh" loading={loading} />
+    <div className="flex justify-content-between align-items-center flex-wrap gap-2">
+      <span className="text-sm text-color-secondary">Total {filteredMaterials.length} bahan baku bermasalah</span>
+      <div className="flex align-items-center gap-2 flex-wrap">
+        <Dropdown
+          value={filterOpType}
+          options={opTypeOptions}
+          onChange={(e) => setFilterOpType(e.value)}
+          placeholder="Filter Jenis Operasi"
+          style={{ width: '210px' }}
+        />
+        <Dropdown
+          value={filterStatus}
+          options={statusOptions}
+          onChange={(e) => setFilterStatus(e.value)}
+          placeholder="Filter Status"
+          style={{ width: '150px' }}
+        />
+        <Button icon="pi pi-refresh" text onClick={fetchAll} tooltip="Refresh" loading={loading} />
         <span className="p-input-icon-left">
           <i className="pi pi-search" />
           <InputText
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder="Cari bahan baku..."
-            style={{ width: '220px' }}
+            style={{ width: '200px' }}
           />
         </span>
       </div>
@@ -173,7 +212,7 @@ export default function StokKritisPage() {
       ) : (
         <div className="card">
           <DataTable
-            value={materials}
+            value={filteredMaterials}
             loading={loading}
             paginator
             rows={10}
@@ -185,15 +224,27 @@ export default function StokKritisPage() {
             sortField="current_stock"
             sortOrder={1}
           >
-            <Column field="kode_bahan_baku" header="Kode"           sortable style={{ width: '110px', fontWeight: 600 }} />
+            <Column field="kode_bahan_baku" header="Kode"            sortable style={{ width: '110px', fontWeight: 600 }} />
             <Column field="material_name"   header="Nama Bahan Baku" sortable />
+            <Column field="nama_operasi"    header="Jenis Operasi"   body={opTypeTemplate} sortable />
             <Column field="nama_satuan"     header="Satuan"          body={(row) => `${row.kode_satuan} - ${row.nama_satuan}`} />
-            <Column field="current_stock"   header="Stok Saat Ini"   body={stokTemplate}    sortable />
+            <Column field="current_stock"   header="Stok Saat Ini"   body={stokTemplate}   sortable />
             <Column field="min_stock_level" header="Batas Minimum"   body={(row) => `${row.min_stock_level} ${row.nama_satuan}`} sortable />
             <Column header="Kekurangan"     body={selisihTemplate} />
             <Column header="Progress Stok"  body={progressTemplate}  style={{ minWidth: '180px' }} />
             <Column header="Status"         body={(row) => { const s = getStokStatus(row); return <Tag value={s.label} severity={s.severity} />; }} />
-            <Column header="Aksi"           body={actionTemplate}    style={{ width: '80px' }} />
+            <Column
+              header="Aksi"
+              style={{ width: '80px' }}
+              body={(row) => (
+                <Button
+                  icon="pi pi-box"
+                  rounded text severity="warning"
+                  tooltip="Update Stok"
+                  onClick={() => { setSelectedData(row); setStockDialogVisible(true); }}
+                />
+              )}
+            />
           </DataTable>
         </div>
       )}

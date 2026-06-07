@@ -3,36 +3,28 @@ import { useState, useEffect, useRef } from 'react';
 import { Toast } from 'primereact/toast';
 import { Button } from 'primereact/button';
 import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { Tag } from 'primereact/tag';
 import { Slider } from 'primereact/slider';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
-const DEKOMPOSISI_OPTIONS = [
-  { label: 'Random Grouping',   value: 'random'   },
-  { label: 'Static Grouping',   value: 'static'   },
-  { label: 'Adaptive (SADS)',   value: 'adaptive' },
-];
-
 const DEFAULT_CONFIG = {
-  jumlah_populasi: 50,
-  jumlah_iterasi:  100,
-  dekomposisi:     'random',
+  jumlah_populasi: 100,
+  jumlah_iterasi:  1000,
   crossover_rate:  0.80,
-  mutation_rate:   0.10,
+  mutation_rate:   0.20,
   versi:           '',
 };
 
 export default function KonfigurasiCCEAPage() {
-  const toast    = useRef(null);
-  const [config, setConfig]     = useState(null);
-  const [form, setForm]         = useState(DEFAULT_CONFIG);
-  const [loading, setLoading]   = useState(false);
-  const [saving, setSaving]     = useState(false);
-  const [isEdit, setIsEdit]     = useState(false);
-  const [riwayat, setRiwayat]   = useState([]);
+  const toast  = useRef(null);
+  const [config, setConfig]   = useState(null);
+  const [form, setForm]       = useState(DEFAULT_CONFIG);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [isEdit, setIsEdit]   = useState(false);
+  const [riwayat, setRiwayat] = useState([]);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
@@ -48,15 +40,14 @@ export default function KonfigurasiCCEAPage() {
         }),
       ]);
 
-      const jsonAktif    = await resAktif.json();
-      const jsonRiwayat  = await resRiwayat.json();
+      const jsonAktif   = await resAktif.json();
+      const jsonRiwayat = await resRiwayat.json();
 
       if (jsonAktif.success && jsonAktif.data) {
         setConfig(jsonAktif.data);
         setForm({
           jumlah_populasi: jsonAktif.data.jumlah_populasi,
           jumlah_iterasi:  jsonAktif.data.jumlah_iterasi,
-          dekomposisi:     jsonAktif.data.dekomposisi,
           crossover_rate:  jsonAktif.data.crossover_rate,
           mutation_rate:   jsonAktif.data.mutation_rate,
           versi:           jsonAktif.data.versi || '',
@@ -117,7 +108,8 @@ export default function KonfigurasiCCEAPage() {
         <div>
           <h2 className="m-0 mb-1">Konfigurasi Parameter CCEA</h2>
           <p className="m-0 text-color-secondary text-sm">
-            Atur parameter Cooperative Co-Evolution Algorithm untuk optimasi penjadwalan
+            Atur parameter Cooperative Co-Evolution Algorithm untuk optimasi penjadwalan.
+            Strategi dekomposisi menggunakan SADS (Self-Adaptive Decomposition Strategy).
           </p>
         </div>
         <div className="flex gap-2">
@@ -158,11 +150,11 @@ export default function KonfigurasiCCEAPage() {
                 <InputNumber
                   value={form.jumlah_populasi}
                   onValueChange={(e) => set('jumlah_populasi', e.value)}
-                  min={10} max={500}
+                  min={4} max={500}
                   showButtons
                   style={{ width: '100%' }}
                 />
-                <small className="text-color-secondary">Rekomendasi: 50 | Min: 10 | Max: 500</small>
+                <small className="text-color-secondary">Rekomendasi: 100 | Min: 4 | Max: 500</small>
               </div>
 
               <div className="field col-6">
@@ -172,30 +164,12 @@ export default function KonfigurasiCCEAPage() {
                 <InputNumber
                   value={form.jumlah_iterasi}
                   onValueChange={(e) => set('jumlah_iterasi', e.value)}
-                  min={10} max={1000}
+                  min={1} max={5000}
                   showButtons
                   style={{ width: '100%' }}
                 />
-                <small className="text-color-secondary">Rekomendasi: 100 | Min: 10 | Max: 1000</small>
+                <small className="text-color-secondary">Rekomendasi: 1000 | Min: 1 | Max: 5000</small>
               </div>
-            </div>
-
-            {/* Dekomposisi */}
-            <div className="field mb-4">
-              <label className="font-bold block mb-2">
-                Strategi Dekomposisi <span className="text-red-500">*</span>
-              </label>
-              <Dropdown
-                value={form.dekomposisi}
-                options={DEKOMPOSISI_OPTIONS}
-                onChange={(e) => set('dekomposisi', e.value)}
-                style={{ width: '100%' }}
-              />
-              <small className="text-color-secondary">
-                {form.dekomposisi === 'random'   && 'Memilih variabel secara acak ke sub-komponen setiap siklus'}
-                {form.dekomposisi === 'static'   && 'Memecah variabel berdasarkan aturan tetap sebelum evolusi dimulai'}
-                {form.dekomposisi === 'adaptive' && 'SADS: Secara dinamis menyesuaikan pengelompokan berdasarkan kontribusi'}
-              </small>
             </div>
 
             {/* Crossover Rate */}
@@ -229,7 +203,7 @@ export default function KonfigurasiCCEAPage() {
               />
               <div className="flex justify-content-between mt-1">
                 <small className="text-color-secondary">1%</small>
-                <small className="text-color-secondary">Rekomendasi: 10%</small>
+                <small className="text-color-secondary">Rekomendasi: 20%</small>
                 <small className="text-color-secondary">50%</small>
               </div>
             </div>
@@ -254,11 +228,11 @@ export default function KonfigurasiCCEAPage() {
           <div className="card mb-4">
             <h3 className="mt-0 mb-3">Ringkasan Konfigurasi</h3>
             {[
-              { label: 'Populasi',     value: form.jumlah_populasi,                    unit: 'individu' },
-              { label: 'Iterasi',      value: form.jumlah_iterasi,                     unit: 'generasi' },
-              { label: 'Dekomposisi',  value: DEKOMPOSISI_OPTIONS.find(d => d.value === form.dekomposisi)?.label, unit: '' },
-              { label: 'Crossover',    value: `${(form.crossover_rate * 100).toFixed(0)}%`, unit: '' },
-              { label: 'Mutation',     value: `${(form.mutation_rate * 100).toFixed(0)}%`,  unit: '' },
+              { label: 'Populasi',    value: form.jumlah_populasi,                         unit: 'individu' },
+              { label: 'Iterasi',     value: form.jumlah_iterasi,                          unit: 'generasi' },
+              { label: 'Dekomposisi', value: 'SADS',                                       unit: ''         },
+              { label: 'Crossover',   value: `${(form.crossover_rate * 100).toFixed(0)}%`, unit: ''         },
+              { label: 'Mutation',    value: `${(form.mutation_rate * 100).toFixed(0)}%`,  unit: ''         },
             ].map((item, i) => (
               <div
                 key={i}
@@ -293,7 +267,7 @@ export default function KonfigurasiCCEAPage() {
                     <Tag value={r.is_active ? 'Aktif' : 'Lama'} severity={r.is_active ? 'success' : 'secondary'} />
                   </div>
                   <div className="text-xs text-color-secondary mt-1">
-                    Pop: {r.jumlah_populasi} | Iter: {r.jumlah_iterasi} | {r.dekomposisi}
+                    Pop: {r.jumlah_populasi} | Iter: {r.jumlah_iterasi} | SADS
                   </div>
                   <div className="text-xs text-color-secondary">
                     {r.updated_by || '-'} · {r.updated_at ? new Date(r.updated_at).toLocaleDateString('id-ID') : '-'}

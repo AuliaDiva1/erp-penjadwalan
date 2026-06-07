@@ -4,10 +4,13 @@ import {
   getMaterialByName,
   addMaterial,
   updateMaterial,
+  toggleMaterial,
   deleteMaterial,
   getLowStockMaterials,
   updateStock,
 } from '../models/materialModel.js';
+import { getOperationTypeById }                         from '../models/operationTypeModel.js';
+import { createAutoProcurement, hasPendingProcurement } from '../models/procurementModel.js';
 
 export const getAllMaterialsController = async (req, res) => {
   try {
@@ -21,7 +24,8 @@ export const getAllMaterialsController = async (req, res) => {
 export const getMaterialByIdController = async (req, res) => {
   try {
     const material = await getMaterialById(req.params.id);
-    if (!material) return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
+    if (!material)
+      return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
     res.json({ success: true, data: material });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -30,23 +34,31 @@ export const getMaterialByIdController = async (req, res) => {
 
 export const createMaterial = async (req, res) => {
   try {
-    const { material_name, satuan_id, current_stock, min_stock_level } = req.body;
+    const { operation_type_id, material_name, satuan_id, current_stock, min_stock_level } = req.body;
 
-    if (!material_name?.trim()) {
+    if (!material_name?.trim())
       return res.status(400).json({ success: false, message: 'Nama bahan baku wajib diisi' });
-    }
-    if (!satuan_id) {
+    if (!satuan_id)
       return res.status(400).json({ success: false, message: 'Satuan wajib dipilih' });
+
+    if (operation_type_id) {
+      const opType = await getOperationTypeById(operation_type_id);
+      if (!opType)
+        return res.status(404).json({ success: false, message: 'Operation type tidak ditemukan' });
+      if (!opType.is_active)
+        return res.status(400).json({ success: false, message: 'Operation type tidak aktif' });
     }
 
     const existing = await getMaterialByName(material_name.trim());
-    if (existing) return res.status(400).json({ success: false, message: 'Nama bahan baku sudah ada' });
+    if (existing)
+      return res.status(400).json({ success: false, message: 'Nama bahan baku sudah ada' });
 
     const material = await addMaterial({
-      material_name: material_name.trim(),
+      operation_type_id: operation_type_id ?? null,
+      material_name:     material_name.trim(),
       satuan_id,
-      current_stock: current_stock ?? 0,
-      min_stock_level: min_stock_level ?? 10,
+      current_stock:     current_stock  ?? 0,
+      min_stock_level:   min_stock_level ?? 10,
     });
 
     res.status(201).json({ success: true, message: 'Bahan baku berhasil ditambahkan', data: material });
@@ -58,11 +70,40 @@ export const createMaterial = async (req, res) => {
 export const updateMaterialController = async (req, res) => {
   try {
     const material = await getMaterialById(req.params.id);
-    if (!material) return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
+    if (!material)
+      return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
 
-    const { material_name, satuan_id, min_stock_level } = req.body;
-    const updated = await updateMaterial(req.params.id, { material_name, satuan_id, min_stock_level });
+    const { operation_type_id, material_name, satuan_id, min_stock_level } = req.body;
+
+    if (operation_type_id) {
+      const opType = await getOperationTypeById(operation_type_id);
+      if (!opType)
+        return res.status(404).json({ success: false, message: 'Operation type tidak ditemukan' });
+      if (!opType.is_active)
+        return res.status(400).json({ success: false, message: 'Operation type tidak aktif' });
+    }
+
+    const updated = await updateMaterial(req.params.id, {
+      operation_type_id, material_name, satuan_id, min_stock_level,
+    });
     res.json({ success: true, message: 'Bahan baku berhasil diperbarui', data: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const toggleMaterialController = async (req, res) => {
+  try {
+    const material = await getMaterialById(req.params.id);
+    if (!material)
+      return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
+
+    const newStatus = !material.is_active;
+    await toggleMaterial(req.params.id, newStatus);
+    res.json({
+      success: true,
+      message: `Bahan baku ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}`,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -71,7 +112,8 @@ export const updateMaterialController = async (req, res) => {
 export const deleteMaterialController = async (req, res) => {
   try {
     const material = await getMaterialById(req.params.id);
-    if (!material) return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
+    if (!material)
+      return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
 
     await deleteMaterial(req.params.id);
     res.json({ success: true, message: 'Bahan baku berhasil dihapus' });
@@ -91,23 +133,36 @@ export const getLowStockController = async (req, res) => {
 
 export const updateStockController = async (req, res) => {
   try {
-    const { current_stock } = req.body;
     const material = await getMaterialById(req.params.id);
-    if (!material) return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
+    if (!material)
+      return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
 
-    if (current_stock === undefined || current_stock < 0) {
+    const { current_stock } = req.body;
+    if (current_stock === undefined || current_stock < 0)
       return res.status(400).json({ success: false, message: 'Jumlah stok tidak valid' });
-    }
 
     await updateStock(req.params.id, current_stock);
     const updated = await getMaterialById(req.params.id);
-    const isLow = updated.current_stock <= updated.min_stock_level;
+    const isLow   = updated.current_stock <= updated.min_stock_level;
+
+    // ✅ trigger pengadaan otomatis jika stok kritis/habis & belum ada yg pending
+    let autoProcurement = null;
+    if (isLow) {
+      const sudahAda = await hasPendingProcurement(req.params.id);
+      if (!sudahAda) {
+        autoProcurement = await createAutoProcurement({
+          material_id:              req.params.id,
+          current_stock_at_trigger: updated.current_stock,
+        });
+      }
+    }
 
     res.json({
-      success: true,
-      message: 'Stok berhasil diperbarui',
-      data: updated,
-      warning: isLow ? `Stok ${updated.material_name} di bawah batas minimum!` : null,
+      success:          true,
+      message:          'Stok berhasil diperbarui',
+      data:             updated,
+      warning:          isLow           ? `Stok ${updated.material_name} di bawah batas minimum!` : null,
+      auto_procurement: autoProcurement ? 'Pengadaan otomatis dibuat' : null,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

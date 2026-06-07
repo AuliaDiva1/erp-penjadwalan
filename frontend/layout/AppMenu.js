@@ -35,6 +35,7 @@ const AppMenu = () => {
         items: [
           { label: "Data Pengguna", icon: "pi pi-fw pi-users",  to: "/admin/pengguna"  },
           { label: "Data Mesin",    icon: "pi pi-fw pi-server", to: "/admin/mesin"     },
+          { label: "Operational Type",    icon: "pi pi-fw pi-box",    to: "/admin/operation-types" },
           { label: "Bahan Baku",    icon: "pi pi-fw pi-box",    to: "/admin/materials" },
           { label: "Satuan",        icon: "pi pi-fw pi-tag",    to: "/admin/satuan"    },
         ],
@@ -51,7 +52,7 @@ const AppMenu = () => {
             ],
           },
           { label: "Parameter CCEA",      icon: "pi pi-fw pi-chart-line", to: "/admin/konfigurasi/ccea"  },
-          { label: "Model Prediksi (RF)", icon: "pi pi-fw pi-cog",        to: "/admin/konfigurasi/model" },
+          { label: "Model", icon: "pi pi-fw pi-cog",        to: "/admin/konfigurasi/model" },
         ],
       },
       {

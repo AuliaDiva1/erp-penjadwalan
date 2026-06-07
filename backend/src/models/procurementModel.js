@@ -1,57 +1,69 @@
 import { db } from '../core/config/knex.js';
 
-export const getAllProcurements = () =>
-  db('procurements as p')
-    .leftJoin('materials as m', 'p.material_id', 'm.id')
-    .leftJoin('satuan as s', 'm.satuan_id', 's.id')
-    .leftJoin('users as u', 'p.user_id', 'u.id')
-    .select(
-      'p.id', 'p.required_qty', 'p.current_stock_at_trigger',
-      'p.status', 'p.is_auto', 'p.notes', 'p.created_at', 'p.updated_at',
-      'm.material_name', 'm.kode_bahan_baku', 'm.current_stock',
-      's.nama_satuan', 's.kode_satuan',
-      'u.full_name as handled_by'
-    )
-    .orderBy('p.created_at', 'desc');
+const PROCUREMENT_SELECT = [
+  'p.id',
+  'p.material_id',
+  'm.kode_bahan_baku',
+  'm.material_name',
+  's.nama_satuan',
+  'p.current_stock_at_trigger',
+  'p.required_qty',
+  'p.status',
+  'p.is_auto',
+  'p.created_at',
+  'p.updated_at',
+];
 
-export const getProcurementById = (id) =>
+const withJoins = () =>
   db('procurements as p')
     .leftJoin('materials as m', 'p.material_id', 'm.id')
-    .leftJoin('satuan as s', 'm.satuan_id', 's.id')
-    .leftJoin('users as u', 'p.user_id', 'u.id')
-    .select(
-      'p.id', 'p.required_qty', 'p.current_stock_at_trigger',
-      'p.status', 'p.is_auto', 'p.notes', 'p.created_at', 'p.updated_at',
-      'm.material_name', 'm.kode_bahan_baku', 'm.current_stock',
-      's.nama_satuan', 's.kode_satuan',
-      'u.full_name as handled_by'
-    )
-    .where('p.id', id)
-    .first();
+    .leftJoin('satuan as s', 'm.satuan_id', 's.id');
 
-export const getPendingProcurements = () =>
-  db('procurements as p')
-    .leftJoin('materials as m', 'p.material_id', 'm.id')
-    .leftJoin('satuan as s', 'm.satuan_id', 's.id')
-    .select(
-      'p.id', 'p.required_qty', 'p.current_stock_at_trigger',
-      'p.status', 'p.is_auto', 'p.notes', 'p.created_at',
-      'm.material_name', 'm.kode_bahan_baku', 'm.current_stock',
-      's.nama_satuan', 's.kode_satuan'
-    )
+export const getAllProcurements = async () =>
+  withJoins().select(PROCUREMENT_SELECT).orderBy('p.created_at', 'desc');
+
+export const getPendingProcurements = async () =>
+  withJoins()
+    .select(PROCUREMENT_SELECT)
     .whereIn('p.status', ['pending', 'in_progress'])
     .orderBy('p.created_at', 'desc');
 
-export const createProcurement = (data) =>
-  db('procurements').insert(data);
+export const getProcurementById = async (id) =>
+  withJoins().where('p.id', id).select(PROCUREMENT_SELECT).first();
 
-export const updateProcurementStatus = (id, status, user_id, notes) =>
+export const hasPendingProcurement = async (material_id) => {
+  const row = await db('procurements')
+    .where({ material_id })
+    .whereIn('status', ['pending', 'in_progress'])
+    .first();
+  return !!row;
+};
+
+export const createAutoProcurement = async ({ material_id, current_stock_at_trigger }) => {
+  const [id] = await db('procurements').insert({
+    material_id,
+    current_stock_at_trigger,
+    required_qty: 0,
+    status:       'pending',
+    is_auto:      true,
+  });
+  return getProcurementById(id);
+};
+
+export const createManualProcurement = async ({ material_id, current_stock_at_trigger }) => {
+  const [id] = await db('procurements').insert({
+    material_id,
+    current_stock_at_trigger,
+    required_qty: 0,
+    status:       'pending',
+    is_auto:      false,
+  });
+  return getProcurementById(id);
+};
+
+export const updateProcurementStatus = async (id, { status, required_qty }) =>
   db('procurements').where({ id }).update({
     status,
-    user_id,
-    notes,
-    updated_at: db.fn.now(),
+    required_qty: required_qty ?? db.raw('required_qty'),
+    updated_at:   db.fn.now(),
   });
-
-export const getProcurementByMaterial = (material_id) =>
-  db('procurements').where({ material_id }).orderBy('created_at', 'desc');

@@ -7,21 +7,21 @@ import { Tag } from 'primereact/tag';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
-// Bobot sudah disesuaikan: Lathe tertinggi (1.20) dan Drilling terendah (0.95)
+// Bobot dari analisis dataset: urutan berdasarkan % Delayed per operation type
 const DEFAULT_BOBOT = {
-  Lathe:    1.20,
-  Milling:  1.10,
-  Grinding: 1.08,
-  Additive: 0.98,
-  Drilling: 0.95,
+  Drilling: 1.20,  // % Delayed tertinggi 52.4%
+  Lathe:    1.15,  // % Delayed 51.4%
+  Additive: 1.10,  // % Delayed 50.0%
+  Milling:  1.05,  // % Delayed 45.8%
+  Grinding: 1.00,  // % Delayed terendah 43.3% (baseline)
 };
 
 const DESKRIPSI = {
-  Lathe:    'Prioritas Utama: Sering mengalami keterlambatan/kegagalan hasil produksi.',
-  Milling:  'Presisi tinggi, memerlukan pengawasan pada variasi material.',
-  Grinding: 'Memerlukan kontrol kecepatan dan pendinginan yang ketat.',
-  Additive: 'Proses kompleks namun tingkat keberhasilan relatif stabil.',
-  Drilling: 'Paling sederhana, waktu proses pendek dan sangat fleksibel.',
+  Drilling: 'Persentase keterlambatan tertinggi (52,4%); diprioritaskan dalam penjadwalan.',
+  Lathe:    'Persentase keterlambatan tinggi (51,4%); operasi standar namun rentan terlambat.',
+  Additive: 'Persentase keterlambatan sedang (50,0%); proses kompleks dengan setup panjang.',
+  Milling:  'Persentase keterlambatan sedang (45,8%); presisi tinggi, rentan variasi material.',
+  Grinding: 'Persentase keterlambatan terendah (43,3%); baseline, kontrol kecepatan ketat.',
 };
 
 export default function FuzzyBobotPage() {
@@ -125,13 +125,13 @@ export default function FuzzyBobotPage() {
 
       <div className="card">
         <p className="text-color-secondary text-sm mb-4">
-          Bobot pengali digunakan untuk menyesuaikan skor prioritas Fuzzy Mamdani
-          berdasarkan tingkat kompleksitas teknis setiap jenis operasi mesin.
+          Bobot pengali ditetapkan berdasarkan analisis persentase keterlambatan (<i>% Delayed</i>)
+          per jenis operasi dari dataset historis. Operasi dengan keterlambatan lebih sering
+          mendapat bobot lebih tinggi agar diprioritaskan dalam penjadwalan.
           Skor Final = Skor Fuzzy × Bobot Operation Type.
         </p>
 
         <div className="grid">
-          {/* Mapping data sesuai urutan bobot tertinggi */}
           {Object.entries(bobot).sort((a, b) => b[1] - a[1]).map(([op, val]) => (
             <div key={op} className="col-12 md:col-6 lg:col-4">
               <div
@@ -163,7 +163,7 @@ export default function FuzzyBobotPage() {
           ))}
         </div>
 
-        {/* Visualisasi Urutan di Bagian Bawah */}
+        {/* Visualisasi Urutan */}
         <div className="p-3 border-round mt-2" style={{ background: 'var(--surface-ground)' }}>
           <div className="text-sm font-semibold mb-2">Urutan Prioritas Saat Ini:</div>
           <div className="flex gap-2 flex-wrap">

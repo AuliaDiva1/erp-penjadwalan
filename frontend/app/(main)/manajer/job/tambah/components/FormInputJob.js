@@ -160,6 +160,65 @@ const FormInputJob = () => {
                 />
               </div>
 
+              {/* Tingkat Urgensi Job — dipindah berpasangan dengan Operation Type */}
+              <div className="field col-12 md:col-6">
+                <label className="font-bold block mb-2">Tingkat Urgensi Job</label>
+                <div
+                  className="flex gap-3"
+                  style={{
+                    border: '1px solid var(--surface-border)',
+                    borderRadius: '6px',
+                    padding: '0.5rem 0.75rem',
+                    background: 'var(--surface-ground)',
+                    height: '2.857rem',
+                    alignItems: 'center',
+                  }}
+                >
+                  <label
+                    className="flex align-items-center gap-2 cursor-pointer"
+                    style={{
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '4px',
+                      background: form.is_urgent === true ? '#fef3c7' : 'transparent',
+                      border: form.is_urgent === true ? '1px solid #f59e0b' : '1px solid transparent',
+                      color: form.is_urgent === true ? '#b45309' : 'inherit',
+                      fontWeight: form.is_urgent === true ? '600' : 'normal',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="is_urgent"
+                      checked={form.is_urgent === true}
+                      onChange={() => set('is_urgent', true)}
+                    />
+                    <i className="pi pi-bolt" style={{ fontSize: '0.8rem' }} />
+                    Urgent
+                  </label>
+                  <label
+                    className="flex align-items-center gap-2 cursor-pointer"
+                    style={{
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '4px',
+                      background: form.is_urgent === false ? '#f0fdf4' : 'transparent',
+                      border: form.is_urgent === false ? '1px solid #22c55e' : '1px solid transparent',
+                      color: form.is_urgent === false ? '#15803d' : 'inherit',
+                      fontWeight: form.is_urgent === false ? '600' : 'normal',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="is_urgent"
+                      checked={form.is_urgent === false}
+                      onChange={() => set('is_urgent', false)}
+                    />
+                    Normal
+                  </label>
+                </div>
+                <small className="text-color-secondary">Tingkat prioritas pemrosesan job ini</small>
+              </div>
+
               {/* Bahan Baku */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">Bahan Baku</label>
@@ -206,7 +265,7 @@ const FormInputJob = () => {
                 <small className="text-color-secondary">Min: 20 | Max: 120 menit</small>
               </div>
 
-              {/* Deadline Customer */}
+              {/* Deadline Customer — sekarang berdiri sendiri, tidak berdekatan dengan urgensi */}
               <div className="field col-12 md:col-6">
                 <label className="font-bold block mb-2">Deadline Customer</label>
                 <Calendar
@@ -219,29 +278,6 @@ const FormInputJob = () => {
                   style={{ width: '100%' }}
                 />
                 <small className="text-color-secondary">Opsional — sistem prediksi otomatis jika kosong</small>
-              </div>
-
-              {/* Is Urgent */}
-              <div className="field col-12 md:col-6 flex align-items-center gap-3 mt-4">
-                <label className="font-bold">Urgent?</label>
-                <div className="flex gap-3">
-                  <label className="flex align-items-center gap-1 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={form.is_urgent === true}
-                      onChange={() => set('is_urgent', true)}
-                    />
-                    Ya
-                  </label>
-                  <label className="flex align-items-center gap-1 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={form.is_urgent === false}
-                      onChange={() => set('is_urgent', false)}
-                    />
-                    Tidak
-                  </label>
-                </div>
               </div>
 
             </div>
@@ -275,7 +311,7 @@ const FormInputJob = () => {
               { label: 'Processing Time', value: form.processing_time ? `${form.processing_time} menit` : '-' },
               { label: 'Energy',          value: 'Otomatis dari sistem' },
               { label: 'Availability',    value: 'Otomatis dari sistem' },
-              { label: 'Urgent',          value: form.is_urgent ? '⚡ Ya' : 'Tidak' },
+              { label: 'Tingkat Urgensi', value: form.is_urgent ? '⚡ Urgent' : '✅ Normal' },
               { label: 'Deadline',        value: form.deadline_customer ? new Date(form.deadline_customer).toLocaleString('id-ID') : 'Prediksi otomatis' },
               { label: 'Status Awal',     value: 'Pending' },
             ].map((item, i) => (
@@ -291,10 +327,11 @@ const FormInputJob = () => {
             <h3 className="mt-0 mb-3">Panduan Pengisian</h3>
             {[
               { icon: 'pi-star',     color: '#6366f1', text: 'Operation Type menentukan bobot prioritas Fuzzy Mamdani' },
-              { icon: 'pi-cog',      color: '#f59e0b', text: 'Mesin ditentukan otomatis oleh algoritma CCEA saat pipeline dijalankan' },
+              { icon: 'pi-bolt',     color: '#f59e0b', text: 'Tingkat Urgensi Job menentukan prioritas pemrosesan — Urgent berarti job didahulukan dalam antrian' },
+              { icon: 'pi-cog',      color: '#8b5cf6', text: 'Mesin ditentukan otomatis oleh algoritma CCEA saat pipeline dijalankan' },
               { icon: 'pi-clock',    color: '#22c55e', text: 'Processing time harus 20-120 menit sesuai dataset' },
-              { icon: 'pi-bolt',     color: '#8b5cf6', text: 'Energy consumption & machine availability diisi otomatis sistem berdasarkan jenis operasi' },
-              { icon: 'pi-calendar', color: '#3b82f6', text: 'Deadline opsional, sistem prediksi otomatis via Random Forest' },
+              { icon: 'pi-database', color: '#3b82f6', text: 'Energy consumption & machine availability diisi otomatis sistem berdasarkan jenis operasi' },
+              { icon: 'pi-calendar', color: '#06b6d4', text: 'Deadline opsional, sistem prediksi otomatis via Random Forest' },
               { icon: 'pi-play',     color: '#ef4444', text: 'Setelah disimpan, jalankan pipeline untuk mendapat jadwal optimal' },
             ].map((item, i) => (
               <div key={i} className="flex align-items-start gap-2 mb-3">

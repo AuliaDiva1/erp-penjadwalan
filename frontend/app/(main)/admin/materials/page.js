@@ -15,6 +15,7 @@ export default function MaterialsPage() {
   const toast = useRef(null);
   const [materials, setMaterials] = useState([]);
   const [satuanList, setSatuanList] = useState([]);
+  const [operationTypes, setOperationTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [stockDialogVisible, setStockDialogVisible] = useState(false);
@@ -47,9 +48,20 @@ export default function MaterialsPage() {
     } catch {}
   };
 
+  const fetchOperationTypes = async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/operation-types`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (data.success) setOperationTypes(data.data);
+    } catch {}
+  };
+
   useEffect(() => {
     fetchMaterials();
     fetchSatuan();
+    fetchOperationTypes();
   }, []);
 
   const openTambah = () => { setSelectedData(null); setDialogVisible(true); };
@@ -151,6 +163,7 @@ export default function MaterialsPage() {
       <DataTable value={materials} loading={loading} paginator rows={10} stripedRows emptyMessage="Belum ada data bahan baku">
         <Column field="kode_bahan_baku" header="Kode" style={{ width: '100px' }} />
         <Column field="material_name" header="Nama Bahan Baku" />
+        <Column field="nama_operasi" header="Jenis Operasi" body={(row) => row.nama_operasi || '-'} />
         <Column field="nama_satuan" header="Satuan" body={(row) => `${row.kode_satuan} - ${row.nama_satuan}`} />
         <Column header="Stok Saat Ini" body={stockTemplate} />
         <Column field="min_stock_level" header="Batas Minimum" body={(row) => `${row.min_stock_level} ${row.nama_satuan}`} />
@@ -163,6 +176,7 @@ export default function MaterialsPage() {
         onSave={handleSave}
         selectedData={selectedData}
         satuanList={satuanList}
+        operationTypes={operationTypes}
       />
 
       <FormUpdateStock

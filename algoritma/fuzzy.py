@@ -38,43 +38,38 @@ class FuzzyInputError(ValueError):
 # ---------------------------------------------------------------------------
 # Default config / Membership Function
 # ---------------------------------------------------------------------------
-
-DEFAULT_MF: dict[str, dict[str, list[float]]] = {
-    "processing_time": {
-        "rendah": [20.0,  20.0,  56.0],
-        "sedang": [20.0,  56.0,  87.0],
-        "tinggi": [56.0,  87.0, 120.0],
-    },
-    "energy_consumption": {
-        "rendah": [2.01,  2.01,  6.51],
-        "sedang": [2.01,  6.51, 10.47],
-        "tinggi": [6.51, 10.47, 14.98],
-    },
-    # CATATAN: MF machine_availability hanya valid pada rentang 80–99.
-    # Nilai di luar rentang ini menyebabkan mu=0 untuk semua label,
-    # sehingga tidak ada rule yang fired dan sistem fallback ke DEFAULT_CRISP_FALLBACK.
-    # Ini adalah constraint bisnis yang disengaja; pastikan data input sudah bersih.
-    "machine_availability": {
-        "rendah": [80.0, 80.0, 87.0],
-        "sedang": [80.0, 87.0, 94.0],
-        "tinggi": [87.0, 94.0, 99.0],
-    },
-}
-
-DEFAULT_BOBOT: dict[str, float] = {
-    "Lathe":    1.19,
-    "Additive": 1.15,
-    "Drilling": 1.14,
-    "Milling":  1.08,
-    "Grinding": 1.00,  # baseline (paling jarang bermasalah)
-}
-
+# fuzzy.py - Update DEFAULT_MF dan DEFAULT_BOBOT sesuai distribusi data
 OUTPUT_MF: dict[str, tuple[float, float, float]] = {
     "Rendah": (0.0,   0.0,  50.0),
     "Sedang": (25.0, 50.0,  75.0),
     "Tinggi": (50.0, 100.0, 100.0),
 }
 
+DEFAULT_MF: dict[str, dict[str, list[float]]] = {
+    "processing_time": {
+        "rendah": [20.0,  20.0,  57.0],
+        "sedang": [20.0,  57.0,  95.0],
+        "tinggi": [57.0,  95.0, 120.0],
+    },
+    "energy_consumption": {
+        "rendah": [2.01,  2.01,  6.33],
+        "sedang": [2.01,  6.33, 10.66],
+        "tinggi": [6.33, 10.66, 14.98],
+    },
+    "machine_availability": {
+        "rendah": [80.0, 80.0, 86.0],
+        "sedang": [80.0, 86.0, 93.0],
+        "tinggi": [86.0, 93.0, 99.0],
+    },
+}
+
+DEFAULT_BOBOT: dict[str, float] = {
+    "Drilling": 1.20,  # % Delayed tertinggi 52.4%
+    "Lathe":    1.15,  # % Delayed 51.4%
+    "Additive": 1.10,  # % Delayed 50.0%
+    "Milling":  1.05,  # % Delayed 45.8%
+    "Grinding": 1.00,  # % Delayed terendah 43.3% (baseline)
+}
 # ---------------------------------------------------------------------------
 # Build default rules (27 kombinasi)
 # ---------------------------------------------------------------------------

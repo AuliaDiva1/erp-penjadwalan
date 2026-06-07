@@ -18,6 +18,9 @@ import { activityLogger } from './middleware/activityLogMiddleware.js';
 import konfigurasiFuzzyRoutes from './routes/konfigurasiFuzzyRoutes.js';
 import konfigurasiCCEARoutes  from './routes/konfigurasiCCEARoutes.js';
 import pipelineRoutes from './routes/pipelineRoutes.js';
+import operationTypeRoutes from './routes/operationTypeRoutes.js';
+import operationMaterialRoutes from './routes/operationMaterialRoutes.js';
+
 
 const app = express();
 
@@ -52,7 +55,8 @@ app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/konfigurasi/fuzzy', konfigurasiFuzzyRoutes);
 app.use('/api/konfigurasi/ccea',  konfigurasiCCEARoutes);
 app.use('/api/pipeline', pipelineRoutes);
-
+app.use('/api/operation-types', operationTypeRoutes);
+app.use('/api/operation-materials', operationMaterialRoutes);
 
 
 export default app;
