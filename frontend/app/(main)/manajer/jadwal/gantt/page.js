@@ -52,8 +52,6 @@ export default function GanttChartPage() {
     return () => clearInterval(iv);
   }, []);
 
-  // fetch jobs dari satu jadwal
-  // PATCH 1: tambah _machineId dan _machineName
   const fetchJobsBySchedule = async (schedule) => {
     try {
       const res  = await fetch(`${BASE_URL}/pipeline/result/${schedule.id}`, {
@@ -76,7 +74,6 @@ export default function GanttChartPage() {
     return [];
   };
 
-  // saat tanggal dipilih → fetch semua jadwal lalu ambil semua jobnya
   const loadJobsForDate = async (date) => {
     setLoading(true);
     setSelectedSchedule(null);
@@ -97,8 +94,6 @@ export default function GanttChartPage() {
     }
   };
 
-  // PATCH 2: jangan replace allJobs, cukup set selectedSchedule
-  // filteredJobs yang akan filter by _scheduleId
   const handleSelectSchedule = async (schedule) => {
     setSelectedSchedule(schedule);
     const alreadyLoaded = allJobs.some(j => j._scheduleId === schedule.id);
@@ -106,7 +101,7 @@ export default function GanttChartPage() {
       setLoading(true);
       try {
         const jobs = await fetchJobsBySchedule(schedule);
-        setAllJobs(prev => [...prev, ...jobs]); // tambah, jangan replace
+        setAllJobs(prev => [...prev, ...jobs]);
       } catch {
         toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat jobs' });
       } finally {
@@ -117,7 +112,6 @@ export default function GanttChartPage() {
 
   useEffect(() => { loadJobsForDate(filterDate); }, []);
 
-  // PATCH 3: filter by _scheduleId kalau ada jadwal dipilih
   const filteredJobs = allJobs.filter(j => {
     if (selectedSchedule) return j._scheduleId === selectedSchedule.id;
     if (!j._start || !filterDate) return true;
@@ -126,7 +120,6 @@ export default function GanttChartPage() {
     return j._start <= dayEnd && j._end >= dayStart;
   });
 
-  // PATCH 4: pakai _machineId bukan machine_id
   const machines = [...new Set(filteredJobs.map(j => j._machineId))].filter(Boolean).sort();
 
   const minTime      = filteredJobs.length ? Math.min(...filteredJobs.map(j => j._start?.getTime()).filter(Boolean)) : new Date().setHours(7,0,0,0);
@@ -162,6 +155,11 @@ export default function GanttChartPage() {
     revised: { label: 'Revised', severity: 'warning'   },
   };
 
+  // Fungsi memicu printer browser
+  const handlePrint = () => {
+    window.print();
+  };
+
   const renderRuler = () => {
     const marks = [];
     const step  = 30 * 60 * 1000;
@@ -178,7 +176,7 @@ export default function GanttChartPage() {
           }} />
           <div style={{
             position:   'absolute', top: isHour ? 6 : RULER_H / 2 + 4, left: 4,
-            fontSize:   isHour ? '0.72rem' : '0.62rem',
+            fontSize:   '0.72rem',
             fontWeight: isHour ? 700 : 400,
             color:      isHour ? 'var(--text-color)' : 'var(--text-color-secondary)',
             whiteSpace: 'nowrap',
@@ -230,7 +228,6 @@ export default function GanttChartPage() {
     );
   };
 
-  // PATCH 4: pakai _machineId bukan machine_id
   const renderBars = (machineId) =>
     filteredJobs.filter(j => j._machineId === machineId).map(job => {
       if (!job._start || !job._end) return null;
@@ -293,298 +290,411 @@ export default function GanttChartPage() {
 
   return (
     <div>
+      {/* INJEKSI STYLE CSS UNTUK PRINT */}
+      <style jsx global>{`
+        .print-only-container {
+          display: none;
+        }
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print-only-container, .print-only-container * {
+            visibility: visible;
+          }
+          .print-only-container {
+            display: block !important;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+          .print-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: sans-serif;
+            font-size: 12px;
+          }
+          .print-table th, .print-table td {
+            border: 1px solid #cbd5e1;
+            padding: 8px 10px;
+            text-align: left;
+          }
+          .print-table th {
+            background-color: #f8fafc !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .status-tag {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+          }
+        }
+      `}</style>
+
       <Toast ref={toast} />
 
-      {/* TOOLTIP */}
-      {tooltip.visible && tooltip.job && (
-        <div style={{
-          position: 'fixed',
-          left:     Math.min(tooltip.x + 14, window.innerWidth - 260),
-          top:      tooltip.y - 10,
-          zIndex:   9999,
-          background:   'var(--surface-overlay)',
-          border:       '1px solid var(--surface-border)',
-          borderRadius: 10,
-          padding:      '12px 14px',
-          boxShadow:    '0 8px 32px rgba(0,0,0,0.18)',
-          minWidth:     220,
-          pointerEvents: 'none',
-        }}>
+      {/* ==================== SCREEN INTERFACE (TAMPIL DI WEB) ==================== */}
+      <div className="screen-content">
+        {/* TOOLTIP */}
+        {tooltip.visible && tooltip.job && (
           <div style={{
-            fontWeight: 700, fontSize: '0.9rem',
-            color: getColor(tooltip.job.job_id),
-            marginBottom: 8, paddingBottom: 6,
-            borderBottom: '1px solid var(--surface-border)',
-            display: 'flex', alignItems: 'center', gap: 8,
+            position: 'fixed',
+            left:     Math.min(tooltip.x + 14, window.innerWidth - 260),
+            top:      tooltip.y - 10,
+            zIndex:   9999,
+            background:   'var(--surface-overlay)',
+            border:       '1px solid var(--surface-border)',
+            borderRadius: 10,
+            padding:      '12px 14px',
+            boxShadow:    '0 8px 32px rgba(0,0,0,0.18)',
+            minWidth:     220,
+            pointerEvents: 'none',
           }}>
-            {tooltip.job.job_id}
-            <Tag
-              value={tooltip.job.job_status}
-              severity={{ Completed: 'success', 'In Progress': 'info', Delayed: 'danger', Failed: 'danger', Scheduled: 'info', Pending: 'warning' }[tooltip.job.job_status] || 'info'}
-              style={{ fontSize: '0.6rem' }}
-            />
-          </div>
-          {[
-            ['Jadwal',    tooltip.job._scheduleCode],
-            ['Operasi',   tooltip.job.operation_type],
-            ['Mesin',     tooltip.job._machineName],
-            ['Mulai',     fmt(tooltip.job._start, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
-            ['Selesai',   fmt(tooltip.job._end,   { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
-            ['Durasi',    tooltip.job._start && tooltip.job._end ? `${Math.round((tooltip.job._end - tooltip.job._start) / 60000)} menit` : '-'],
-            ['Prioritas', tooltip.job.priority_score?.toFixed(1) || '-'],
-          ].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 4, gap: 12 }}>
-              <span style={{ color: 'var(--text-color-secondary)' }}>{k}</span>
-              <span style={{ fontWeight: 600 }}>{v}</span>
-            </div>
-          ))}
-          {tooltip.job._dl && (
             <div style={{
-              marginTop: 6, paddingTop: 6,
-              borderTop: '1px solid var(--surface-border)',
-              fontSize: '0.75rem', fontWeight: 600,
-              color: tooltip.job._end > tooltip.job._dl ? '#ef4444' : '#22c55e',
+              fontWeight: 700, fontSize: '0.9rem',
+              color: getColor(tooltip.job.job_id),
+              marginBottom: 8, paddingBottom: 6,
+              borderBottom: '1px solid var(--surface-border)',
+              display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              {tooltip.job._end > tooltip.job._dl ? '⚠ Melewati deadline!' : '✓ Tepat deadline'}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* HEADER */}
-      <div className="flex justify-content-between align-items-center mb-4">
-        <div>
-          <h2 className="m-0 mb-1">Gantt Chart Penjadwalan</h2>
-          <p className="m-0 text-color-secondary text-sm">
-            {fmt(now, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} • {fmt(now, { hour: '2-digit', minute: '2-digit' })} WIB
-          </p>
-        </div>
-        <Button icon="pi pi-refresh" text onClick={() => loadJobsForDate(filterDate)} loading={loading} tooltip="Refresh" />
-      </div>
-
-      {/* KONTROL */}
-      <div className="card mb-3">
-        <div className="flex align-items-center gap-3 flex-wrap">
-
-          {/* STEP 1: Tanggal */}
-          <div className="flex align-items-center gap-2">
-            <div style={{
-              background: '#6366f1', color: 'white',
-              borderRadius: '50%', width: 22, height: 22,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
-            }}>1</div>
-            <span className="font-semibold text-sm">Tanggal:</span>
-            <Calendar
-              value={filterDate}
-              onChange={(e) => {
-                setFilterDate(e.value);
-                setSelectedSchedule(null);
-                loadJobsForDate(e.value);
-              }}
-              dateFormat="dd MM yy"
-              showIcon
-              style={{ width: 170 }}
-            />
-            <Button
-              label="Hari Ini"
-              size="small"
-              text
-              onClick={() => {
-                const today = new Date();
-                setFilterDate(today);
-                setSelectedSchedule(null);
-                loadJobsForDate(today);
-              }}
-            />
-          </div>
-
-          <i className="pi pi-angle-right text-color-secondary" />
-
-          {/* STEP 2: Jadwal (opsional) */}
-          <div className="flex align-items-center gap-2">
-            <div style={{
-              background: selectedSchedule ? '#22c55e' : '#94a3b8', color: 'white',
-              borderRadius: '50%', width: 22, height: 22,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
-            }}>2</div>
-            <span className="font-semibold text-sm">Jadwal <span className="text-color-secondary font-normal">(opsional):</span></span>
-            <Dropdown
-              value={selectedSchedule}
-              options={[{ schedule_code: '— Semua Jadwal —', id: null }, ...schedules]}
-              onChange={(e) => {
-                if (!e.value || !e.value.id) {
-                  setSelectedSchedule(null);
-                  loadJobsForDate(filterDate);
-                } else {
-                  handleSelectSchedule(e.value);
-                }
-              }}
-              optionLabel="schedule_code"
-              placeholder="— Semua Jadwal —"
-              style={{ width: 210 }}
-              itemTemplate={(opt) => (
-                <div className="flex justify-content-between align-items-center gap-2">
-                  <span className="text-sm">{opt.schedule_code}</span>
-                  {opt.status_jadwal && (
-                    <Tag
-                      value={statusConfig[opt.status_jadwal]?.label}
-                      severity={statusConfig[opt.status_jadwal]?.severity}
-                    />
-                  )}
-                </div>
-              )}
-            />
-            {selectedSchedule && (
-              <Button
-                icon="pi pi-times"
-                rounded text size="small"
-                tooltip="Reset ke semua jadwal"
-                onClick={() => { setSelectedSchedule(null); loadJobsForDate(filterDate); }}
+              {tooltip.job.job_id}
+              <Tag
+                value={tooltip.job.job_status}
+                severity={{ Completed: 'success', 'In Progress': 'info', Delayed: 'danger', Failed: 'danger', Scheduled: 'info', Pending: 'warning' }[tooltip.job.job_status] || 'info'}
+                style={{ fontSize: '0.6rem' }}
               />
+            </div>
+            {[
+              ['Jadwal',    tooltip.job._scheduleCode],
+              ['Operasi',   tooltip.job.operation_type],
+              ['Mesin',     tooltip.job._machineName],
+              ['Mulai',     fmt(tooltip.job._start, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
+              ['Selesai',   fmt(tooltip.job._end,   { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
+              ['Durasi',    tooltip.job._start && tooltip.job._end ? `${Math.round((tooltip.job._end - tooltip.job._start) / 60000)} menit` : '-'],
+              ['Prioritas', tooltip.job.priority_score?.toFixed(1) || '-'],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 4, gap: 12 }}>
+                <span style={{ color: 'var(--text-color-secondary)' }}>{k}</span>
+                <span style={{ fontWeight: 600 }}>{v}</span>
+              </div>
+            ))}
+            {tooltip.job._dl && (
+              <div style={{
+                marginTop: 6, paddingTop: 6,
+                borderTop: '1px solid var(--surface-border)',
+                fontSize: '0.75rem', fontWeight: 600,
+                color: tooltip.job._end > tooltip.job._dl ? '#ef4444' : '#22c55e',
+              }}>
+                {tooltip.job._end > tooltip.job._dl ? '⚠ Melewati deadline!' : '✓ Tepat deadline'}
+              </div>
             )}
           </div>
+        )}
 
-          {/* ZOOM */}
-          <div className="flex align-items-center gap-2 ml-auto">
-            <span className="font-semibold text-sm">Zoom:</span>
-            <Dropdown
-              value={zoom}
-              options={ZOOM_OPTIONS}
-              onChange={(e) => setZoom(e.value)}
-              style={{ width: 185 }}
+        {/* HEADER */}
+        <div className="flex justify-content-between align-items-center mb-4">
+          <div>
+            <h2 className="m-0 mb-1">Gantt Chart Penjadwalan</h2>
+            <p className="m-0 text-color-secondary text-sm">
+              {fmt(now, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} • {fmt(now, { hour: '2-digit', minute: '2-digit' })} WIB
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {/* Tombol Cetak Baru */}
+            <Button 
+              label="Cetak Jadwal" 
+              icon="pi pi-print" 
+              severity="secondary"
+              outlined 
+              disabled={filteredJobs.length === 0}
+              onClick={handlePrint} 
             />
-            <Button label="⏱ Sekarang" severity="danger" size="small" outlined onClick={scrollToNow} />
+            <Button icon="pi pi-refresh" text onClick={() => loadJobsForDate(filterDate)} loading={loading} tooltip="Refresh" />
           </div>
         </div>
 
-        {/* INFO HASIL FILTER */}
-        <div className="mt-3 pt-3 flex align-items-center gap-3 flex-wrap"
-          style={{ borderTop: '1px solid var(--surface-border)' }}>
-          <span className="text-sm">
-            Menampilkan <b>{filteredJobs.length}</b> job
-            {!selectedSchedule && filterDate && <> pada <b>{fmt(filterDate, { day: '2-digit', month: 'long', year: 'numeric' })}</b></>}
-            {selectedSchedule && <> · Jadwal <b>{selectedSchedule.schedule_code}</b> (semua tanggal)</>}
-          </span>
-          {selectedSchedule && (
-            <div className="flex gap-2 align-items-center">
-              <Tag value={statusConfig[selectedSchedule.status_jadwal]?.label} severity={statusConfig[selectedSchedule.status_jadwal]?.severity} />
-              <span className="text-sm text-color-secondary">Makespan: <b>{selectedSchedule.makespan} mnt</b></span>
+        {/* KONTROL */}
+        <div className="card mb-3">
+          <div className="flex align-items-center gap-3 flex-wrap">
+            {/* STEP 1: Tanggal */}
+            <div className="flex align-items-center gap-2">
+              <div style={{
+                background: '#6366f1', color: 'white',
+                borderRadius: '50%', width: 22, height: 22,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
+              }}>1</div>
+              <span className="font-semibold text-sm">Tanggal:</span>
+              <Calendar
+                value={filterDate}
+                onChange={(e) => {
+                  setFilterDate(e.value);
+                  setSelectedSchedule(null);
+                  loadJobsForDate(e.value);
+                }}
+                dateFormat="dd MM yy"
+                showIcon
+                style={{ width: 170 }}
+              />
+              <Button
+                label="Hari Ini"
+                size="small"
+                text
+                onClick={() => {
+                  const today = new Date();
+                  setFilterDate(today);
+                  setSelectedSchedule(null);
+                  loadJobsForDate(today);
+                }}
+              />
             </div>
-          )}
+
+            <i className="pi pi-angle-right text-color-secondary" />
+
+            {/* STEP 2: Jadwal (opsional) */}
+            <div className="flex align-items-center gap-2">
+              <div style={{
+                background: selectedSchedule ? '#22c55e' : '#94a3b8', color: 'white',
+                borderRadius: '50%', width: 22, height: 22,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
+              }}>2</div>
+              <span className="font-semibold text-sm">Jadwal <span className="text-color-secondary font-normal">(opsional):</span></span>
+              <Dropdown
+                value={selectedSchedule}
+                options={[{ schedule_code: '— Semua Jadwal —', id: null }, ...schedules]}
+                onChange={(e) => {
+                  if (!e.value || !e.value.id) {
+                    setSelectedSchedule(null);
+                    loadJobsForDate(filterDate);
+                  } else {
+                    handleSelectSchedule(e.value);
+                  }
+                }}
+                optionLabel="schedule_code"
+                placeholder="— Semua Jadwal —"
+                style={{ width: 210 }}
+                itemTemplate={(opt) => (
+                  <div className="flex justify-content-between align-items-center gap-2">
+                    <span className="text-sm">{opt.schedule_code}</span>
+                    {opt.status_jadwal && (
+                      <Tag
+                        value={statusConfig[opt.status_jadwal]?.label}
+                        severity={statusConfig[opt.status_jadwal]?.severity}
+                      />
+                    )}
+                  </div>
+                )}
+              />
+              {selectedSchedule && (
+                <Button
+                  icon="pi pi-times"
+                  rounded text size="small"
+                  tooltip="Reset ke semua jadwal"
+                  onClick={() => { setSelectedSchedule(null); loadJobsForDate(filterDate); }}
+                />
+              )}
+            </div>
+
+            {/* ZOOM */}
+            <div className="flex align-items-center gap-2 ml-auto">
+              <span className="font-semibold text-sm">Zoom:</span>
+              <Dropdown
+                value={zoom}
+                options={ZOOM_OPTIONS}
+                onChange={(e) => setZoom(e.value)}
+                style={{ width: 185 }}
+              />
+              <Button label="⏱ Sekarang" severity="danger" size="small" outlined onClick={scrollToNow} />
+            </div>
+          </div>
+
+          {/* INFO HASIL FILTER */}
+          <div className="mt-3 pt-3 flex align-items-center gap-3 flex-wrap"
+            style={{ borderTop: '1px solid var(--surface-border)' }}>
+            <span className="text-sm">
+              Menampilkan <b>{filteredJobs.length}</b> job
+              {!selectedSchedule && filterDate && <> pada <b>{fmt(filterDate, { day: '2-digit', month: 'long', year: 'numeric' })}</b></>}
+              {selectedSchedule && <> · Jadwal <b>{selectedSchedule.schedule_code}</b> (semua tanggal)</>}
+            </span>
+            {selectedSchedule && (
+              <div className="flex gap-2 align-items-center">
+                <Tag value={statusConfig[selectedSchedule.status_jadwal]?.label} severity={statusConfig[selectedSchedule.status_jadwal]?.severity} />
+                <span className="text-sm text-color-secondary">Makespan: <b>{selectedSchedule.makespan} mnt</b></span>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* LEGENDA */}
-      <div className="card mb-3 p-3">
-        <div className="flex align-items-center gap-3 flex-wrap">
-          <span className="font-semibold text-sm">Keterangan:</span>
-          {[
-            { label: 'Scheduled',      color: '#6366f1' },
-            { label: 'In Progress',    color: '#3b82f6' },
-            { label: 'Completed',      color: '#22c55e' },
-            { label: 'Delayed/Failed', color: '#ef4444' },
-          ].map(s => (
-            <div key={s.label} className="flex align-items-center gap-1">
-              <div style={{ width: 14, height: 14, borderRadius: 4, background: s.color }} />
-              <span className="text-xs">{s.label}</span>
+        {/* LEGENDA */}
+        <div className="card mb-3 p-3">
+          <div className="flex align-items-center gap-3 flex-wrap">
+            <span className="font-semibold text-sm">Keterangan:</span>
+            {[
+              { label: 'Scheduled',      color: '#6366f1' },
+              { label: 'In Progress',    color: '#3b82f6' },
+              { label: 'Completed',      color: '#22c55e' },
+              { label: 'Delayed/Failed', color: '#ef4444' },
+            ].map(s => (
+              <div key={s.label} className="flex align-items-center gap-1">
+                <div style={{ width: 14, height: 14, borderRadius: 4, background: s.color }} />
+                <span className="text-xs">{s.label}</span>
+              </div>
+            ))}
+            <div className="flex align-items-center gap-1">
+              <div style={{ width: 2, height: 16, background: '#ef4444', borderRadius: 2 }} />
+              <span className="text-xs text-red-500">Waktu Sekarang</span>
             </div>
-          ))}
-          <div className="flex align-items-center gap-1">
-            <div style={{ width: 2, height: 16, background: '#ef4444', borderRadius: 2 }} />
-            <span className="text-xs text-red-500">Waktu Sekarang</span>
-          </div>
-          <div className="flex align-items-center gap-1">
-            <div style={{ width: 14, height: 14, borderRadius: 4, border: '2px solid #ef4444', background: 'transparent' }} />
-            <span className="text-xs text-red-500">Melewati Deadline ⚠️</span>
+            <div className="flex align-items-center gap-1">
+              <div style={{ width: 14, height: 14, borderRadius: 4, border: '2px solid #ef4444', background: 'transparent' }} />
+              <span className="text-xs text-red-500">Melewati Deadline ⚠️</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* GANTT */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: 10 }}>
-        {loading ? (
-          <div className="flex justify-content-center align-items-center" style={{ height: 200 }}>
-            <i className="pi pi-spin pi-spinner" style={{ fontSize: '2rem', color: '#6366f1' }} />
-          </div>
-        ) : filteredJobs.length === 0 ? (
-          <div className="flex flex-column align-items-center justify-content-center gap-3" style={{ height: 220 }}>
-            <i className="pi pi-calendar-times" style={{ fontSize: '2.5rem', color: '#94a3b8' }} />
-            <p className="m-0 font-semibold">Tidak ada job pada tanggal ini</p>
-            <p className="m-0 text-color-secondary text-sm">Coba pilih tanggal lain atau jalankan pipeline</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', userSelect: 'none' }}>
-
-            {/* LABEL MESIN */}
-            <div style={{
-              width: LABEL_WIDTH, flexShrink: 0,
-              borderRight: '2px solid var(--surface-border)',
-              background: 'var(--surface-ground)',
-            }}>
-              <div style={{ height: RULER_H, borderBottom: '1px solid var(--surface-border)' }} />
-              {machines.map((mid, mi) => (
-                <div key={mid} style={{
-                  height: ROW_HEIGHT,
-                  display: 'flex', flexDirection: 'column',
-                  justifyContent: 'center', alignItems: 'flex-end',
-                  paddingRight: 14, paddingLeft: 8,
-                  borderBottom: '1px solid var(--surface-border)',
-                  background: mi % 2 === 0 ? 'var(--surface-ground)' : 'var(--surface-section)',
-                }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>{mid}</span>
-                  {/* PATCH 4: pakai _machineId */}
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-color-secondary)' }}>
-                    {filteredJobs.filter(j => j._machineId === mid).length} jobs
-                  </span>
-                </div>
-              ))}
+        {/* GANTT */}
+        <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: 10 }}>
+          {loading ? (
+            <div className="flex justify-content-center align-items-center" style={{ height: 200 }}>
+              <i className="pi pi-spin pi-spinner" style={{ fontSize: '2rem', color: '#6366f1' }} />
             </div>
-
-            {/* SCROLL AREA */}
-            <div
-              ref={scrollRef}
-              style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', cursor: 'grab' }}
-              onMouseDown={onMouseDown}
-            >
-              <div style={{ width: Math.max(totalWidth, 600), position: 'relative' }}>
-                {/* RULER */}
-                <div style={{
-                  height: RULER_H, position: 'relative',
-                  background: 'var(--surface-ground)',
-                  borderBottom: '2px solid var(--surface-border)',
-                }}>
-                  {renderRuler()}
-                </div>
-
-                {/* ROWS */}
+          ) : filteredJobs.length === 0 ? (
+            <div className="flex flex-column align-items-center justify-content-center gap-3" style={{ height: 220 }}>
+              <i className="pi pi-calendar-times" style={{ fontSize: '2.5rem', color: '#94a3b8' }} />
+              <p className="m-0 font-semibold">Tidak ada job pada tanggal ini</p>
+              <p className="m-0 text-color-secondary text-sm">Coba pilih tanggal lain atau jalankan pipeline</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', userSelect: 'none' }}>
+              {/* LABEL MESIN */}
+              <div style={{
+                width: LABEL_WIDTH, flexShrink: 0,
+                borderRight: '2px solid var(--surface-border)',
+                background: 'var(--surface-ground)',
+              }}>
+                <div style={{ height: RULER_H, borderBottom: '1px solid var(--surface-border)' }} />
                 {machines.map((mid, mi) => (
                   <div key={mid} style={{
-                    height: ROW_HEIGHT, position: 'relative',
-                    background: mi % 2 === 0 ? 'var(--surface-ground)' : 'var(--surface-section)',
+                    height: ROW_HEIGHT,
+                    display: 'flex', flexDirection: 'column',
+                    justifyContent: 'center', alignItems: 'flex-end',
+                    paddingRight: 14, paddingLeft: 8,
                     borderBottom: '1px solid var(--surface-border)',
+                    background: mi % 2 === 0 ? 'var(--surface-ground)' : 'var(--surface-section)',
                   }}>
-                    {renderGrid()}
-                    {renderBars(mid)}
-                    {renderNowLine()}
+                    <span style={{ fontWeight: 700, fontSize: '0.82rem' }}>{mid}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-color-secondary)' }}>
+                      {filteredJobs.filter(j => j._machineId === mid).length} jobs
+                    </span>
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        )}
 
-        {filteredJobs.length > 0 && (
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '8px 16px', borderTop: '1px solid var(--surface-border)',
-            background: 'var(--surface-ground)', fontSize: '0.78rem', color: 'var(--text-color-secondary)',
-          }}>
-            <span><b>{filteredJobs.length}</b> jobs · <b>{machines.length}</b> mesin</span>
-            <span>Drag untuk scroll · Zoom untuk perbesar/perkecil</span>
-          </div>
-        )}
+              {/* SCROLL AREA */}
+              <div
+                ref={scrollRef}
+                style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', cursor: 'grab' }}
+                onMouseDown={onMouseDown}
+              >
+                <div style={{ width: Math.max(totalWidth, 600), position: 'relative' }}>
+                  {/* RULER */}
+                  <div style={{
+                    height: RULER_H, position: 'relative',
+                    background: 'var(--surface-ground)',
+                    borderBottom: '2px solid var(--surface-border)',
+                  }}>
+                    {renderRuler()}
+                  </div>
+
+                  {/* ROWS */}
+                  {machines.map((mid, mi) => (
+                    <div key={mid} style={{
+                      height: ROW_HEIGHT, position: 'relative',
+                      background: mi % 2 === 0 ? 'var(--surface-ground)' : 'var(--surface-section)',
+                      borderBottom: '1px solid var(--surface-border)',
+                    }}>
+                      {renderGrid()}
+                      {renderBars(mid)}
+                      {renderNowLine()}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {filteredJobs.length > 0 && (
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '8px 16px', borderTop: '1px solid var(--surface-border)',
+              background: 'var(--surface-ground)', fontSize: '0.78rem', color: 'var(--text-color-secondary)',
+            }}>
+              <span><b>{filteredJobs.length}</b> jobs · <b>{machines.length}</b> mesin</span>
+              <span>Drag untuk scroll · Zoom untuk perbesar/perkecil</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+
+      {/* ==================== PRINT ONLY STRUCTURE (STRUKTUR TAMPILAN CETAK) ==================== */}
+      <div className="print-only-container">
+        <div style={{ marginBottom: '20px', borderBottom: '2px solid #334155', paddingBottom: '10px' }}>
+          <h1 style={{ margin: '0 0 5px 0', fontSize: '20px' }}>Laporan Hasil Jadwal Kerja </h1>
+          <p style={{ margin: 0, color: '#475569', fontSize: '12px' }}>
+            Tanggal Filter: {fmt(filterDate, { day: '2-digit', month: 'long', year: 'numeric' })} | Dicetak pada: {fmt(new Date(), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} WIB
+          </p>
+        </div>
+
+        <table className="print-table">
+          <thead>
+            <tr>
+              <th>Job ID</th>
+              <th>Status</th>
+              <th>No. Jadwal (Schedule Code)</th>
+              <th>Operasi</th>
+              <th>Mesin</th>
+              <th>Mulai (Start)</th>
+              <th>Selesai (End)</th>
+              <th>Durasi</th>
+              <th>Prioritas</th>
+              <th>Keterangan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredJobs.map((job) => {
+              const duration = job._start && job._end ? `${Math.round((job._end - job._start) / 60000)} menit` : '-';
+              const isOverDeadline = job._dl && job._end > job._dl;
+              const statusBg = jobStatusColor[job.job_status] || '#6366f1';
+              
+              return (
+                <tr key={job.job_id}>
+                  <td style={{ fontWeight: 'bold', color: '#1e293b' }}>{job.job_id}</td>
+                  <td>
+                    <span className="status-tag" style={{ backgroundColor: statusBg }}>
+                      {job.job_status}
+                    </span>
+                  </td>
+                  <td>{job._scheduleCode || '-'}</td>
+                  <td>{job.operation_type || '-'}</td>
+                  <td style={{ fontWeight: 600 }}>{job._machineName} ({job._machineId})</td>
+                  <td>{fmt(job._start, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td>{fmt(job._end, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td>{duration}</td>
+                  <td>{job.priority_score?.toFixed(1) || '-'}</td>
+                  <td style={{ fontWeight: '500', color: isOverDeadline ? '#dc2626' : '#16a34a' }}>
+                    {isOverDeadline ? '⚠️ Melewati Deadline' : '✓ Tepat Deadline'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

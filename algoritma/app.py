@@ -17,33 +17,30 @@ from ccea import CCEAInputError, CCEAConfigError, run_ccea
 
 load_dotenv()
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
 DB_API     = os.getenv("DB_API", "")
 FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
 DB_TIMEOUT = 5
 
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
 
 class PipelineInputError(ValueError):
-    """Input pipeline tidak valid."""
+    pass
 
-# ---------------------------------------------------------------------------
-# Helper: hitung deadline (rule-based)
-# Deadline = Scheduled_Start + Processing_Time
-# ---------------------------------------------------------------------------
+
+def _parse_local_datetime(s: str) -> datetime:
+    s = s.strip().replace("Z", "")
+    normalized = s.replace("T", " ")[:19]
+    return datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+
+
+def _fmt_local(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
 
 def hitung_deadline(job: dict, scheduled_start_dt: datetime) -> dict:
     pt = job.get("processing_time")
@@ -51,27 +48,18 @@ def hitung_deadline(job: dict, scheduled_start_dt: datetime) -> dict:
         raise PipelineInputError(
             f"Job '{job.get('job_id', '?')}' processing_time tidak valid: {pt!r}"
         )
-
     predicted_end = scheduled_start_dt + timedelta(minutes=float(pt))
-    deadline      = predicted_end  # Deadline = Scheduled_Start + Processing_Time
-
     return {
         "predicted_duration": round(float(pt), 2),
-        "predicted_start":    scheduled_start_dt.isoformat(),
-        "predicted_end":      predicted_end.isoformat(),
-        "deadline_predicted": deadline.isoformat(),
+        "predicted_start":    _fmt_local(scheduled_start_dt),
+        "predicted_end":      _fmt_local(predicted_end),
+        "deadline_predicted": _fmt_local(predicted_end),
     }
 
-# ---------------------------------------------------------------------------
-# Flask app
-# ---------------------------------------------------------------------------
 
 app = Flask(__name__)
 CORS(app)
 
-# ---------------------------------------------------------------------------
-# Error handlers terpusat
-# ---------------------------------------------------------------------------
 
 @app.errorhandler(400)
 def bad_request(e):
@@ -85,9 +73,6 @@ def not_found(e):
 def internal_error(e):
     return jsonify({"success": False, "message": "Internal server error"}), 500
 
-# ---------------------------------------------------------------------------
-# Helper: load CCEA config dari DB
-# ---------------------------------------------------------------------------
 
 _ccea_config_cache: dict | None = None
 _ccea_config_lock  = threading.Lock()
@@ -123,9 +108,6 @@ def load_ccea_config(token: str | None = None, force_reload: bool = False) -> di
         logger.warning("[CCEA] Gagal load config dari DB (%s), pakai default.", exc)
         return None
 
-# ---------------------------------------------------------------------------
-# Helper: validasi jobs & machines dari request body
-# ---------------------------------------------------------------------------
 
 def _parse_body_jobs_machines(body: dict) -> tuple[list, list]:
     jobs     = body.get("jobs", [])
@@ -145,9 +127,6 @@ def _parse_body_jobs_machines(body: dict) -> tuple[list, list]:
 
     return jobs, machine_ids
 
-# ============================================================
-# ENDPOINT 1: Health Check
-# ============================================================
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -156,9 +135,6 @@ def health():
         "service": "Fuzzy Mamdani + CCEA Scheduling Pipeline",
     })
 
-# ============================================================
-# ENDPOINT 2: Hitung Deadline (rule-based)
-# ============================================================
 
 @app.route("/predict/deadline", methods=["POST"])
 def predict_deadline():
@@ -169,14 +145,13 @@ def predict_deadline():
         return jsonify({"success": False, "message": "Field 'jobs' harus list non-kosong."}), 400
 
     base_time = datetime.now()
-    results   = []
-    errors    = []
+    results, errors = [], []
 
     for job in jobs:
         job_id = job.get("job_id", "?")
         try:
             scheduled_start = (
-                datetime.fromisoformat(job["scheduled_start"])
+                _parse_local_datetime(job["scheduled_start"])
                 if job.get("scheduled_start")
                 else base_time
             )
@@ -188,9 +163,6 @@ def predict_deadline():
 
     return jsonify({"success": True, "data": results, "errors": errors})
 
-# ============================================================
-# ENDPOINT 3: Hitung Prioritas Fuzzy
-# ============================================================
 
 @app.route("/fuzzy/prioritas", methods=["POST"])
 def fuzzy_prioritas():
@@ -211,9 +183,6 @@ def fuzzy_prioritas():
     except FuzzyInputError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400
 
-# ============================================================
-# ENDPOINT 4: Pipeline Lengkap (Fuzzy + CCEA)
-# ============================================================
 
 @app.route("/pipeline/run", methods=["POST"])
 def pipeline_run():
@@ -225,32 +194,58 @@ def pipeline_run():
     except PipelineInputError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400
 
+    machine_busy_until_raw = body.get("machine_busy_until", {})
+
     logger.info("[PIPELINE] Mulai | %d jobs | %d machines", len(jobs), len(machine_ids))
+    logger.info("[PIPELINE] machine_busy_until diterima: %s", machine_busy_until_raw)
 
-    base_time = datetime.now()
+    # ── Parse busy_until per mesin ───────────────────
+    parsed_busy: dict[str, datetime] = {}
+    for machine_id in machine_ids:
+        busy_str = machine_busy_until_raw.get(machine_id)
+        if busy_str:
+            try:
+                parsed_busy[machine_id] = _parse_local_datetime(busy_str)
+            except ValueError:
+                logger.warning("[PIPELINE] Gagal parse busy_until '%s' mesin %s", busy_str, machine_id)
 
-    # ── STEP 1: Hitung Deadline (rule-based) ────────
+    # base_time = waktu mesin paling AKHIR selesai (anchor titik 0 CCEA)
+    # Semua job baru tidak bisa start sebelum waktu ini
+    # Kalau tidak ada busy → pakai datetime.now()
+    if parsed_busy:
+        base_time = max(parsed_busy.values())
+        logger.info("[PIPELINE] base_time (anchor) = %s", _fmt_local(base_time))
+    else:
+        base_time = datetime.now()
+        logger.info("[PIPELINE] base_time = now (%s), tidak ada mesin busy", _fmt_local(base_time))
+
+    # machine_ready_offset = selisih menit dari base_time per mesin
+    # Mesin yang selesai sebelum anchor → offset 0 (sudah free)
+    # Mesin yang tidak ada di busy_until → offset 0 (langsung free dari base_time)
+    machine_ready_offset: dict[str, float] = {}
+    for machine_id in machine_ids:
+        if machine_id in parsed_busy:
+            offset = (parsed_busy[machine_id] - base_time).total_seconds() / 60.0
+            machine_ready_offset[machine_id] = max(0.0, offset)
+        else:
+            machine_ready_offset[machine_id] = 0.0
+        logger.info(
+            "[PIPELINE] Mesin %s → ready offset: %.1f menit",
+            machine_id, machine_ready_offset[machine_id],
+        )
+
+    # ── STEP 1: Hitung Deadline ──────────────────────
     logger.info("[STEP 1] Rule-Based — Hitung Deadline")
     deadline_results: dict[str, dict] = {}
     for job in jobs:
         job_id = job.get("job_id", "?")
         try:
-            scheduled_start = (
-                datetime.fromisoformat(job["scheduled_start"])
-                if job.get("scheduled_start")
-                else base_time
-            )
-            deadline_results[job_id] = hitung_deadline(job, scheduled_start)
-            logger.debug(
-                "  %s → deadline: %s",
-                job_id,
-                deadline_results[job_id]["deadline_predicted"][:19],
-            )
+            deadline_results[job_id] = hitung_deadline(job, base_time)
         except PipelineInputError as exc:
             logger.warning("[STEP 1] Job '%s' dilewati: %s", job_id, exc)
             deadline_results[job_id] = {}
 
-    # ── STEP 2: Fuzzy Mamdani — Hitung Prioritas ────
+    # ── STEP 2: Fuzzy Mamdani ────────────────────────
     logger.info("[STEP 2] Fuzzy Mamdani — Hitung Prioritas")
     fuzzy_input = [
         {
@@ -264,7 +259,7 @@ def pipeline_run():
     ]
 
     try:
-        batch_fuzzy  = hitung_prioritas_batch(fuzzy_input, token)
+        batch_fuzzy = hitung_prioritas_batch(fuzzy_input, token)
     except FuzzyInputError as exc:
         return jsonify({"success": False, "message": f"Fuzzy error: {exc}"}), 400
 
@@ -276,13 +271,7 @@ def pipeline_run():
 
     fuzzy_map = {r["job_id"]: r for r in fuzzy_list}
 
-    for r in fuzzy_list:
-        logger.debug(
-            "  %s → skor: %s (crisp: %s, bobot: %s)",
-            r["job_id"], r["skor_final"], r["skor_crisp"], r["bobot"],
-        )
-
-    # ── STEP 3: CCEA — Optimasi Penjadwalan ─────────
+    # ── STEP 3: CCEA ─────────────────────────────────
     logger.info("[STEP 3] CCEA — Optimasi Penjadwalan")
     ccea_config = load_ccea_config(token)
 
@@ -300,36 +289,39 @@ def pipeline_run():
     )
 
     try:
-        ccea_result = run_ccea(ccea_jobs, machine_ids, ccea_config)
+        ccea_result = run_ccea(ccea_jobs, machine_ids, ccea_config, machine_ready_offset)
     except (CCEAInputError, CCEAConfigError) as exc:
         return jsonify({"success": False, "message": f"CCEA error: {exc}"}), 400
 
-    # ── STEP 4: Gabungkan Hasil ──────────────────────
+    # ── STEP 4: Gabungkan Hasil ───────────────────────
     logger.info("[STEP 4] Menggabungkan hasil...")
 
-    final_schedule = [
-        {
+    final_schedule = []
+    for item in ccea_result["schedule"]:
+        # start_time dan end_time dari CCEA adalah offset menit dari base_time
+        scheduled_start_dt = base_time + timedelta(minutes=item["start_time"])
+        scheduled_end_dt   = base_time + timedelta(minutes=item["end_time"])
+
+        deadline_predicted = _fmt_local(scheduled_end_dt)
+
+        final_schedule.append({
             "job_id":              item["job_id"],
             "assigned_machine_id": item["machine_id"],
-            "scheduled_start":     (base_time + timedelta(minutes=item["start_time"])).isoformat(),
-            "scheduled_end":       (base_time + timedelta(minutes=item["end_time"])).isoformat(),
+            "scheduled_start":     _fmt_local(scheduled_start_dt),
+            "scheduled_end":       _fmt_local(scheduled_end_dt),
             "duration":            item["duration"],
             "start_offset_menit":  item["start_time"],
             "end_offset_menit":    item["end_time"],
-            # hasil rule-based deadline
-            "deadline_predicted":  deadline_results.get(item["job_id"], {}).get("deadline_predicted"),
-            "predicted_duration":  deadline_results.get(item["job_id"], {}).get("predicted_duration"),
-            # hasil Fuzzy
+            "deadline_predicted":  deadline_predicted,
+            "predicted_duration":  item["duration"],
             "skor_prioritas":      fuzzy_map.get(item["job_id"], {}).get("skor_final", 0),
             "skor_crisp":          fuzzy_map.get(item["job_id"], {}).get("skor_crisp", 0),
             "bobot_operation":     fuzzy_map.get(item["job_id"], {}).get("bobot", 1.0),
-        }
-        for item in ccea_result["schedule"]
-    ]
+        })
 
     logger.info(
-        "[PIPELINE] SELESAI | Makespan: %s menit | Jobs: %d | Mesin: %d",
-        ccea_result["makespan"], len(jobs), len(machine_ids),
+        "[PIPELINE] SELESAI | Makespan: %s menit | Jobs: %d | Mesin: %d | base_time: %s",
+        ccea_result["makespan"], len(jobs), len(machine_ids), _fmt_local(base_time),
     )
 
     return jsonify({
@@ -343,13 +335,37 @@ def pipeline_run():
             "ccea_generasi": ccea_result.get("generasi"),
             "ccea_cache":    ccea_result.get("cache_stats"),
             "ccea_config":   ccea_config,
-            "generated_at":  datetime.now().isoformat(),
+            "base_time":     _fmt_local(base_time),
+            "generated_at":  _fmt_local(datetime.now()),
         },
     })
 
-# ============================================================
-# Entry point
-# ============================================================
+
+@app.route("/model/info", methods=["GET"])
+def model_info():
+    return jsonify({
+        "success": True,
+        "data": {
+            "fuzzy_rules": 27,
+            "ccea_config": _ccea_config_cache,
+            "status":      "active",
+        },
+    })
+
+
+@app.route("/model/reset", methods=["POST"])
+def model_reset():
+    global _ccea_config_cache
+    with _ccea_config_lock:
+        _ccea_config_cache = None
+    invalidate_config_cache()
+    logger.info("[MODEL] Cache direset.")
+    return jsonify({
+        "success":  True,
+        "message":  "Model cache berhasil direset",
+        "metadata": {"reset_at": _fmt_local(datetime.now())},
+    })
+
 
 if __name__ == "__main__":
     logger.info("=" * 50)

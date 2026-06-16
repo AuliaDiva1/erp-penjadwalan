@@ -5,13 +5,12 @@ import {
   getOperationTypeByKode,
   addOperationType,
   updateOperationType,
-  toggleOperationType,  // ✅ tambah import
+  toggleOperationType,
   deleteOperationType,
 } from '../models/operationTypeModel.js';
 
 export const getAllOperationTypesController = async (req, res) => {
   try {
-    // ✅ support ?active=true untuk dropdown form
     const data = req.query.active === 'true'
       ? await getActiveOperationTypes()
       : await getAllOperationTypes();
@@ -33,21 +32,31 @@ export const getOperationTypeByIdController = async (req, res) => {
 
 export const createOperationType = async (req, res) => {
   try {
-    const { kode_operasi, nama_operasi, deskripsi, energy_rate_default, min_processing_time, max_processing_time } = req.body;
+    const {
+      kode_operasi, nama_operasi, deskripsi,
+      energy_rate_default, default_machine_availability,
+      min_processing_time, max_processing_time,
+      base_time, time_per_unit,
+    } = req.body;
 
     if (!kode_operasi?.trim()) return res.status(400).json({ success: false, message: 'Kode operasi wajib diisi' });
     if (!nama_operasi?.trim()) return res.status(400).json({ success: false, message: 'Nama operasi wajib diisi' });
+    if (!base_time || base_time <= 0) return res.status(400).json({ success: false, message: 'Base time wajib diisi' });
+    if (!time_per_unit || time_per_unit <= 0) return res.status(400).json({ success: false, message: 'Time per unit wajib diisi' });
 
     const existing = await getOperationTypeByKode(kode_operasi.trim().toUpperCase());
     if (existing) return res.status(400).json({ success: false, message: 'Kode operasi sudah ada' });
 
     const data = await addOperationType({
-      kode_operasi: kode_operasi.trim().toUpperCase(),
-      nama_operasi: nama_operasi.trim(),
+      kode_operasi:                 kode_operasi.trim().toUpperCase(),
+      nama_operasi:                 nama_operasi.trim(),
       deskripsi,
       energy_rate_default,
+      default_machine_availability,
       min_processing_time,
       max_processing_time,
+      base_time,
+      time_per_unit,
     });
 
     res.status(201).json({ success: true, message: 'Operation type berhasil ditambahkan', data });
@@ -61,18 +70,30 @@ export const updateOperationTypeController = async (req, res) => {
     const existing = await getOperationTypeById(req.params.id);
     if (!existing) return res.status(404).json({ success: false, message: 'Operation type tidak ditemukan' });
 
-    // ✅ is_active tidak bisa diubah lewat sini, sudah diproteksi di model
-    const { nama_operasi, deskripsi, energy_rate_default, min_processing_time, max_processing_time } = req.body;
+    const {
+      nama_operasi, deskripsi,
+      energy_rate_default, default_machine_availability,
+      min_processing_time, max_processing_time,
+      base_time, time_per_unit,
+    } = req.body;
+
     const data = await updateOperationType(req.params.id, {
-      nama_operasi, deskripsi, energy_rate_default, min_processing_time, max_processing_time
+      nama_operasi,
+      deskripsi,
+      energy_rate_default,
+      default_machine_availability,
+      min_processing_time,
+      max_processing_time,
+      base_time,
+      time_per_unit,
     });
+
     res.json({ success: true, message: 'Operation type berhasil diperbarui', data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ✅ endpoint khusus toggle is_active
 export const toggleOperationTypeController = async (req, res) => {
   try {
     const existing = await getOperationTypeById(req.params.id);

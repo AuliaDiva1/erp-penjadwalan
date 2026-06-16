@@ -10,6 +10,7 @@ import {
   updateJobActualController,
   updateJobStatusController,
   rescheduleJobController,
+  resetJobsBatchController,
   deleteJobController,
 } from '../controllers/jobController.js';
 import { authenticate, authorizeAdmin } from '../middleware/authMiddleware.js';
@@ -22,6 +23,7 @@ router.get('/idle-machines',       authenticate, getIdleMachinesController);
 router.get('/status/:status',      authenticate, getJobsByStatusController);
 router.get('/:id',                 authenticate, getJobByIdController);
 router.post('/',                   authenticate, createJobController);
+router.patch('/reset-batch',       authenticate, resetJobsBatchController);
 router.put('/:id',                 authenticate, updateJobController);
 router.patch('/:id/actual',        authenticate, updateJobActualController);
 router.patch('/:id/status',        authenticate, updateJobStatusController);

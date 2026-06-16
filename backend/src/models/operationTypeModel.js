@@ -2,7 +2,9 @@ import { db } from '../core/config/knex.js';
 
 const OP_TYPE_FIELDS = [
   'id', 'kode_operasi', 'nama_operasi', 'deskripsi',
-  'energy_rate_default', 'min_processing_time', 'max_processing_time',
+  'energy_rate_default', 'default_machine_availability',
+  'min_processing_time', 'max_processing_time',
+  'base_time', 'time_per_unit',
   'is_active', 'created_at', 'updated_at'
 ];
 
@@ -18,15 +20,23 @@ export const getOperationTypeById = async (id) =>
 export const getOperationTypeByKode = async (kode_operasi) =>
   db('operation_types').where({ kode_operasi }).first();
 
-export const addOperationType = async ({ kode_operasi, nama_operasi, deskripsi, energy_rate_default, min_processing_time, max_processing_time }) => {
+export const addOperationType = async ({
+  kode_operasi, nama_operasi, deskripsi,
+  energy_rate_default, default_machine_availability,
+  min_processing_time, max_processing_time,
+  base_time, time_per_unit,
+}) => {
   const [id] = await db('operation_types').insert({
     kode_operasi,
     nama_operasi,
-    deskripsi:            deskripsi ?? null,
-    energy_rate_default:  energy_rate_default ?? null,
-    min_processing_time:  min_processing_time ?? 20,
-    max_processing_time:  max_processing_time ?? 120,
-    is_active:            true,
+    deskripsi:                    deskripsi                    ?? null,
+    energy_rate_default:          energy_rate_default          ?? null,
+    default_machine_availability: default_machine_availability ?? null,
+    min_processing_time:          min_processing_time          ?? 20,
+    max_processing_time:          max_processing_time          ?? 120,
+    base_time:                    base_time                    ?? 20,
+    time_per_unit:                time_per_unit                ?? 15,
+    is_active:                    true,
   });
   return getOperationTypeById(id);
 };

@@ -170,7 +170,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 className="m-0 mb-1">Dashboard ERP</h2>
+          <h2 className="m-0 mb-1">Dashboard Staff Gudang</h2>
           <p className="m-0 text-color-secondary text-sm">
             Pantau stok, mesin, pengadaan &amp; operasi secara real-time
           </p>

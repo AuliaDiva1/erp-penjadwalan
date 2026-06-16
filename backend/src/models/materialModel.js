@@ -28,8 +28,12 @@ export const generateKodeBahanBaku = async () => {
   return `BHN${String(num + 1).padStart(3, '0')}`;
 };
 
-export const getAllMaterials = async () =>
-  withJoins().select(MATERIAL_SELECT).orderBy('m.id', 'asc');
+// ← tambah parameter opsional operation_type_id
+export const getAllMaterials = async ({ operation_type_id } = {}) => {
+  const query = withJoins().select(MATERIAL_SELECT).orderBy('m.id', 'asc');
+  if (operation_type_id) query.where('m.operation_type_id', operation_type_id);
+  return query;
+};
 
 export const getMaterialById = async (id) =>
   withJoins().where('m.id', id).select(MATERIAL_SELECT).first();
@@ -52,7 +56,7 @@ export const addMaterial = async ({ operation_type_id, material_name, satuan_id,
 };
 
 export const updateMaterial = async (id, data) => {
-  const { is_active, kode_bahan_baku, ...safeData } = data; // cegah ubah kode & is_active
+  const { is_active, kode_bahan_baku, ...safeData } = data;
   await db('materials').where({ id }).update({ ...safeData, updated_at: db.fn.now() });
   return getMaterialById(id);
 };
@@ -63,7 +67,6 @@ export const toggleMaterial = async (id, is_active) =>
 export const deleteMaterial = async (id) =>
   db('materials').where({ id }).del();
 
-// Fix: tambah join operation_type
 export const getLowStockMaterials = async () =>
   withJoins()
     .whereRaw('m.current_stock <= m.min_stock_level')

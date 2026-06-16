@@ -13,18 +13,16 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 export default function OperationTypesPage() {
   const toast = useRef(null);
   const [operationTypes, setOperationTypes] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [dialogVisible, setDialogVisible] = useState(false);
-  const [selectedData, setSelectedData] = useState(null);
+  const [loading,        setLoading]        = useState(false);
+  const [dialogVisible,  setDialogVisible]  = useState(false);
+  const [selectedData,   setSelectedData]   = useState(null);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
   const fetchOperationTypes = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${BASE_URL}/operation-types`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      const res  = await fetch(`${BASE_URL}/operation-types`, { headers: { Authorization: `Bearer ${getToken()}` } });
       const data = await res.json();
       if (data.success) setOperationTypes(data.data);
     } catch {
@@ -37,12 +35,12 @@ export default function OperationTypesPage() {
   useEffect(() => { fetchOperationTypes(); }, []);
 
   const openTambah = () => { setSelectedData(null); setDialogVisible(true); };
-  const openEdit = (row) => { setSelectedData(row); setDialogVisible(true); };
+  const openEdit   = (row) => { setSelectedData(row); setDialogVisible(true); };
 
   const handleSave = async (payload) => {
-    const url = selectedData ? `${BASE_URL}/operation-types/${selectedData.id}` : `${BASE_URL}/operation-types`;
+    const url    = selectedData ? `${BASE_URL}/operation-types/${selectedData.id}` : `${BASE_URL}/operation-types`;
     const method = selectedData ? 'PUT' : 'POST';
-    const res = await fetch(url, {
+    const res    = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
       body: JSON.stringify(payload),
@@ -57,16 +55,36 @@ export default function OperationTypesPage() {
     }
   };
 
+  const handleToggle = (row) => {
+    confirmDialog({
+      message: `${row.is_active ? 'Nonaktifkan' : 'Aktifkan'} operation type "${row.nama_operasi}"?`,
+      header:  'Konfirmasi',
+      icon:    'pi pi-question-circle',
+      accept:  async () => {
+        const res  = await fetch(`${BASE_URL}/operation-types/${row.id}/toggle`, {
+          method:  'PATCH',
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        const data = await res.json();
+        if (data.success) {
+          toast.current.show({ severity: 'success', summary: 'Berhasil', detail: data.message });
+          fetchOperationTypes();
+        } else {
+          toast.current.show({ severity: 'error', summary: 'Gagal', detail: data.message });
+        }
+      },
+    });
+  };
+
   const handleDelete = (id) => {
     confirmDialog({
-      message: 'Yakin ingin menghapus operation type ini? Material yang terhubung akan kehilangan relasi operasinya.',
-      header: 'Konfirmasi Hapus',
-      icon: 'pi pi-exclamation-triangle',
+      message:         'Yakin ingin menghapus operation type ini?',
+      header:          'Konfirmasi Hapus',
+      icon:            'pi pi-exclamation-triangle',
       acceptClassName: 'p-button-danger',
       accept: async () => {
-        const res = await fetch(`${BASE_URL}/operation-types/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${getToken()}` },
+        const res  = await fetch(`${BASE_URL}/operation-types/${id}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` },
         });
         const data = await res.json();
         if (data.success) {
@@ -87,14 +105,31 @@ export default function OperationTypesPage() {
     <span>{row.min_processing_time} – {row.max_processing_time} menit</span>
   );
 
+  const processingParamTemplate = (row) => (
+    <span style={{ fontSize: '0.8rem', color: 'var(--text-color-secondary)' }}>
+      base {row.base_time ?? '-'} + {row.time_per_unit ?? '-'} /unit
+    </span>
+  );
+
   const energyTemplate = (row) => (
     <span>{row.energy_rate_default != null ? `${row.energy_rate_default} kWh` : '-'}</span>
   );
 
+  const availabilityTemplate = (row) => (
+    <span>{row.default_machine_availability != null ? `${row.default_machine_availability}%` : '-'}</span>
+  );
+
   const actionTemplate = (row) => (
     <div className="flex gap-2">
-      <Button icon="pi pi-pencil" rounded text severity="info" onClick={() => openEdit(row)} tooltip="Edit" />
-      <Button icon="pi pi-trash" rounded text severity="danger" onClick={() => handleDelete(row.id)} tooltip="Hapus" />
+      <Button icon="pi pi-pencil" rounded text severity="info"    onClick={() => openEdit(row)}    tooltip="Edit" />
+      <Button
+        icon={row.is_active ? 'pi pi-ban' : 'pi pi-check-circle'}
+        rounded text
+        severity={row.is_active ? 'warning' : 'success'}
+        onClick={() => handleToggle(row)}
+        tooltip={row.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+      />
+      <Button icon="pi pi-trash" rounded text severity="danger"   onClick={() => handleDelete(row.id)} tooltip="Hapus" />
     </div>
   );
 
@@ -111,21 +146,16 @@ export default function OperationTypesPage() {
         <Button label="Tambah Operation Type" icon="pi pi-plus" onClick={openTambah} />
       </div>
 
-      <DataTable
-        value={operationTypes}
-        loading={loading}
-        paginator
-        rows={10}
-        stripedRows
-        emptyMessage="Belum ada data operation type"
-      >
-        <Column field="kode_operasi" header="Kode" style={{ width: '100px' }} />
-        <Column field="nama_operasi" header="Nama Operasi" />
-        <Column field="deskripsi" header="Deskripsi" body={(row) => row.deskripsi || '-'} />
-        <Column header="Processing Time" body={processingTimeTemplate} />
-        <Column header="Energy Rate Default" body={energyTemplate} />
-        <Column header="Status" body={statusTemplate} style={{ width: '100px' }} />
-        <Column header="Aksi" body={actionTemplate} style={{ width: '120px' }} />
+      <DataTable value={operationTypes} loading={loading} paginator rows={10} stripedRows emptyMessage="Belum ada data operation type">
+        <Column field="kode_operasi"   header="Kode"              style={{ width: '90px' }} />
+        <Column field="nama_operasi"   header="Nama Operasi" />
+        <Column field="deskripsi"      header="Deskripsi"         body={row => row.deskripsi || '-'} />
+        <Column header="Processing Time Range"  body={processingTimeTemplate} />
+        <Column header="Formula PT"             body={processingParamTemplate} />
+        <Column header="Energy Default"         body={energyTemplate} />
+        <Column header="Availability Default"   body={availabilityTemplate} />
+        <Column header="Status"                 body={statusTemplate}  style={{ width: '90px' }} />
+        <Column header="Aksi"                   body={actionTemplate}  style={{ width: '140px' }} />
       </DataTable>
 
       <FormOperationType

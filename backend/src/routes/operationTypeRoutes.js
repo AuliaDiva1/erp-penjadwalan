@@ -4,6 +4,7 @@ import {
   getOperationTypeByIdController,
   createOperationType,
   updateOperationTypeController,
+  toggleOperationTypeController,  // ← tambah import
   deleteOperationTypeController,
 } from '../controllers/operationTypeController.js';
 import {
@@ -13,13 +14,12 @@ import {
 
 const router = express.Router();
 
-// Semua role bisa lihat
-router.get('/', authenticate, getAllOperationTypesController);
+router.get('/',    authenticate, getAllOperationTypesController);
 router.get('/:id', authenticate, getOperationTypeByIdController);
 
-// Hanya admin yang bisa tambah, edit, hapus
-router.post('/', authenticate, authorizeAdmin, createOperationType);
-router.put('/:id', authenticate, authorizeAdmin, updateOperationTypeController);
-router.delete('/:id', authenticate, authorizeAdmin, deleteOperationTypeController);
+router.post('/',            authenticate, authorizeAdmin, createOperationType);
+router.put('/:id',          authenticate, authorizeAdmin, updateOperationTypeController);
+router.patch('/:id/toggle', authenticate, authorizeAdmin, toggleOperationTypeController);  // ← tambah
+router.delete('/:id',       authenticate, authorizeAdmin, deleteOperationTypeController);
 
 export default router;

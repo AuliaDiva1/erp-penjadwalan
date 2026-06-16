@@ -152,7 +152,7 @@ export default function LandingERP() {
         { text: 'Notifikasi stok bahan baku', included: true },
         { text: 'Dashboard lantai produksi', included: true },
         { text: 'Prioritas job Fuzzy Mamdani', included: true },
-        { text: 'Prediksi durasi (Random Forest)', included: false },
+        { text: 'Prediksi durasi otomatis', included: false },
         { text: 'Optimasi mesin CCEA', included: false },
         { text: 'Multi-lokasi & laporan analitik', included: false },
         { text: 'Akses API & integrasi ERP', included: false },
@@ -164,7 +164,7 @@ export default function LandingERP() {
       color: '#4f46e5', accentColor: '#c7d2fe', badge: 'Paling Populer',
       features: [
         { text: 'Semua fitur Starter', included: true },
-        { text: 'Prediksi durasi (Random Forest)', included: true },
+        { text: 'Prediksi durasi otomatis', included: true },
         { text: 'Prioritas job Fuzzy Mamdani', included: true },
         { text: 'Optimasi mesin paralel (CCEA)', included: true },
         { text: 'Multi-lokasi produksi', included: true },
@@ -195,7 +195,7 @@ export default function LandingERP() {
   const faqs = [
     { q: 'Apa itu Fuzzy Mamdani dalam sistem ini?', a: 'Fuzzy Mamdani digunakan untuk menentukan skor prioritas setiap job berdasarkan tiga variabel: processing time, energy consumption, dan machine availability. Hasilnya digunakan sebagai populasi awal CCEA.' },
     { q: 'Apa itu CCEA dan kenapa dipilih?', a: 'Cooperative Co-Evolution Algorithm adalah algoritma evolusioner yang memecah masalah penjadwalan menjadi sub-komponen paralel. Dipilih karena lebih efektif menghindari local optimum dibanding Genetic Algorithm atau PSO.' },
-    { q: 'Bagaimana sistem menentukan deadline job?', a: 'Deadline diprediksi otomatis oleh model Random Forest Regression yang dilatih dari data historis Actual_End. Operator tidak perlu input deadline secara manual.' },
+    { q: 'Bagaimana sistem menentukan deadline job?', a: 'Deadline diprediksi otomatis oleh model prediksi yang dilatih dari data historis Actual_End. Operator tidak perlu input deadline secara manual.' },
     { q: 'Apa output akhir dari sistem ini?', a: 'Output utama adalah Gantt Chart jadwal produksi yang menampilkan urutan pengerjaan tiap job per mesin, beserta nilai makespan hasil optimasi CCEA.' },
     { q: 'Siapa saja yang bisa mengakses sistem ini?', a: 'Sistem dapat diakses oleh tiga peran: Administrator, Manajer Produksi, dan Staff Gudang. Masing-masing memiliki hak akses yang berbeda sesuai tanggung jawabnya.' },
   ];
@@ -384,12 +384,17 @@ export default function LandingERP() {
         transition:'all 0.35s',
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {/* ── LOGO: ganti pi-cog → logo-white.svg ── */}
           <div
             style={{ width:38, height:38, borderRadius:10, background:'linear-gradient(135deg,#4f46e5,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(79,70,229,0.4)', transition:'transform 0.2s', cursor:'pointer' }}
             onMouseEnter={e=>(e.currentTarget.style.transform='rotate(-8deg) scale(1.08)')}
             onMouseLeave={e=>(e.currentTarget.style.transform='rotate(0) scale(1)')}
           >
-            <i className="pi pi-cog" style={{color:'#fff',fontSize:'1.1rem'}}/>
+            <img
+              src="/layout/images/logo-white.svg"
+              alt="logo"
+              style={{ width:24, height:24, objectFit:'contain' }}
+            />
           </div>
           <span style={{fontWeight:700,fontSize:'1.2rem',color:'#0f172a',letterSpacing:'-0.02em'}}>
             ERP<span style={{color:'#4f46e5'}}>Jadwal</span>
@@ -434,7 +439,7 @@ export default function LandingERP() {
         <div className="ticker-wrap">
           <div className="ticker-inner">
             {[...Array(3)].map((_,oi)=>
-              ['Fuzzy Mamdani','CCEA Optimizer','Gantt Chart','Random Forest','Real-time Inventory','Smart Scheduling','Minimasi Makespan','Auto Notifikasi'].map((item,idx)=>(
+              ['Fuzzy Mamdani','CCEA Optimizer','Gantt Chart','Prediksi Durasi','Real-time Inventory','Smart Scheduling','Minimasi Makespan','Auto Notifikasi'].map((item,idx)=>(
                 <span key={`${oi}-${idx}`} style={{display:'inline-flex',alignItems:'center',gap:8,padding:'0 32px',color:'rgba(255,255,255,0.85)',fontSize:'0.75rem',fontWeight:500}}>
                   <span style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)',display:'inline-block'}}/>
                   {item}
@@ -620,7 +625,7 @@ export default function LandingERP() {
             {[
               {step:'01',title:'Input Job Order',desc:'Manajer Produksi menginput Processing Time, Energy Consumption, Machine Availability, dan Operation Type.',icon:'pi-plus-circle',color:'#4f46e5'},
               {step:'02',title:'Validasi Stok',desc:'Sistem otomatis memeriksa ketersediaan bahan baku. Jika kurang, notifikasi dikirim ke Staff Gudang.',icon:'pi-box',color:'#0891b2'},
-              {step:'03',title:'Prediksi Deadline',desc:'Model Random Forest Regression memprediksi deadline setiap job secara otomatis dari data historis.',icon:'pi-clock',color:'#7c3aed'},
+              {step:'03',title:'Prediksi Deadline',desc:'Model prediksi memprediksi deadline setiap job secara otomatis dari data historis.',icon:'pi-clock',color:'#7c3aed'},
               {step:'04',title:'Fuzzy Mamdani',desc:'Menghitung skor prioritas setiap job berdasarkan 27 rules IF-THEN dengan output nilai 0–100.',icon:'pi-sliders-h',color:'#0891b2'},
               {step:'05',title:'Optimasi CCEA',desc:'Mengoptimalkan urutan pengerjaan dan alokasi mesin untuk menghasilkan makespan minimal.',icon:'pi-chart-line',color:'#4f46e5'},
               {step:'06',title:'Gantt Chart',desc:'Jadwal produksi ditampilkan sebagai Gantt Chart. Manajer memvalidasi sebelum dijadikan jadwal final.',icon:'pi-calendar',color:'#7c3aed'},
@@ -669,14 +674,11 @@ export default function LandingERP() {
 
       {/* ══════════════ PRICING — WHITE + DRAGGABLE ══════════════ */}
       <section id="harga" style={{padding:'100px 32px 120px',background:'#ffffff',position:'relative',overflow:'hidden'}}>
-        {/* Subtle dot pattern */}
         <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,rgba(79,70,229,0.055) 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
-        {/* Soft orbs */}
         <div style={{position:'absolute',top:-180,right:'10%',width:500,height:500,borderRadius:'50%',background:'radial-gradient(circle,rgba(79,70,229,0.07) 0%,transparent 65%)',pointerEvents:'none'}}/>
         <div style={{position:'absolute',bottom:-150,left:'5%',width:420,height:420,borderRadius:'50%',background:'radial-gradient(circle,rgba(124,58,237,0.06) 0%,transparent 65%)',pointerEvents:'none'}}/>
 
         <div style={{maxWidth:1200,margin:'0 auto',position:'relative',zIndex:1}}>
-          {/* Header */}
           <div style={{textAlign:'center',marginBottom:20}}>
             <div style={{display:'inline-block',background:'#f0f4ff',color:'#4f46e5',borderRadius:8,padding:'4px 14px',fontSize:'0.75rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:16}}>Harga Paket</div>
             <h2 style={{fontSize:'clamp(2rem,4.5vw,3rem)',fontWeight:800,color:'#0f172a',marginBottom:16,letterSpacing:'-0.03em',lineHeight:1.15}}>
@@ -688,7 +690,6 @@ export default function LandingERP() {
             </p>
           </div>
 
-          {/* Pilot banner */}
           <div className="pilot-badge" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'linear-gradient(135deg,#fefce8,#fef9c3)',border:'1.5px solid #fbbf24',borderRadius:14,padding:'12px 24px',maxWidth:'max-content',margin:'28px auto 72px'}}>
             <div style={{width:30,height:30,borderRadius:8,background:'linear-gradient(135deg,#fbbf24,#f59e0b)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 4px 12px rgba(251,191,36,0.4)'}}>
               <i className="pi pi-star-fill" style={{color:'#fff',fontSize:'0.7rem'}}/>
@@ -700,7 +701,6 @@ export default function LandingERP() {
             </div>
           </div>
 
-          {/* ── DRAGGABLE CARDS ── */}
           <div
             className="pricing-row"
             style={{display:'flex',gap:24,justifyContent:'center',alignItems:'flex-start',minHeight:640,flexWrap:'wrap'}}
@@ -741,24 +741,20 @@ export default function LandingERP() {
                   onMouseDown={e => { e.preventDefault(); startDrag(idx, e.clientX, e.clientY); }}
                   onTouchStart={e => { startDrag(idx, e.touches[0].clientX, e.touches[0].clientY); }}
                 >
-                  {/* Popular badge */}
                   {isPopular && (
                     <div style={{position:'absolute',top:-1,left:'50%',transform:'translateX(-50%)',background:`linear-gradient(90deg,${plan.color},#7c3aed)`,color:'#fff',fontSize:'0.65rem',fontWeight:800,padding:'5px 20px',borderRadius:'0 0 12px 12px',letterSpacing:'0.06em',textTransform:'uppercase',boxShadow:`0 4px 16px ${plan.color}50`,whiteSpace:'nowrap'}}>
                       ⭐ Paling Populer
                     </div>
                   )}
 
-                  {/* Drag hint */}
                   <div className="drag-hint" style={{position:'absolute',top:14,right:16,opacity:isDragging?0:0.4,transition:'opacity 0.3s',pointerEvents:'none',display:'flex',alignItems:'center',gap:4}}>
                     <i className="pi pi-arrows-alt" style={{fontSize:'0.7rem',color:'#94a3b8'}}/>
                     <span style={{fontSize:'0.6rem',color:'#94a3b8',fontWeight:600}}>drag</span>
                   </div>
 
                   <div style={{padding:'32px 28px',paddingTop:isPopular?48:32}}>
-                    {/* Color accent strip */}
                     <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${plan.color},${plan.color}88)`,borderRadius:'24px 24px 0 0'}}/>
 
-                    {/* Plan name */}
                     <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
                       <div style={{width:36,height:36,borderRadius:10,background:`${plan.color}12`,border:`1px solid ${plan.color}30`,display:'flex',alignItems:'center',justifyContent:'center'}}>
                         <i className={`pi ${idx===0?'pi-star':idx===1?'pi-bolt':'pi-shield'}`} style={{color:plan.color,fontSize:'0.9rem'}}/>
@@ -771,7 +767,6 @@ export default function LandingERP() {
 
                     <p style={{fontSize:'0.78rem',color:'#94a3b8',lineHeight:1.6,marginBottom:20}}>{plan.tagline}</p>
 
-                    {/* Price */}
                     <div style={{marginBottom:8}}>
                       <div style={{display:'flex',alignItems:'baseline',gap:4}}>
                         <span style={{fontSize:'1.65rem',fontWeight:800,color:'#0f172a',letterSpacing:'-0.03em',lineHeight:1}}>{plan.price}</span>
@@ -783,10 +778,8 @@ export default function LandingERP() {
                       </div>
                     </div>
 
-                    {/* Divider */}
                     <div style={{height:1,background:`linear-gradient(90deg,${plan.color}30,#e8ecf4,${plan.color}15)`,margin:'18px 0'}}/>
 
-                    {/* Features */}
                     <div style={{display:'flex',flexDirection:'column',gap:9,marginBottom:24}}>
                       {plan.features.map((feat,j)=>(
                         <div key={j} style={{display:'flex',alignItems:'flex-start',gap:9}}>
@@ -801,7 +794,6 @@ export default function LandingERP() {
                       ))}
                     </div>
 
-                    {/* CTA */}
                     <button
                       onClick={e=>{ e.stopPropagation(); router.push('/auth/login'); }}
                       onMouseDown={e=>e.stopPropagation()}
@@ -817,7 +809,6 @@ export default function LandingERP() {
             })}
           </div>
 
-          {/* Implementation note */}
           <div style={{marginTop:64,background:'linear-gradient(135deg,#f8faff,#f5f3ff)',border:'1px solid #e0e7ff',borderRadius:20,padding:'22px 32px',display:'flex',alignItems:'center',justifyContent:'center',flexWrap:'wrap',gap:20}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <div style={{width:34,height:34,borderRadius:10,background:'#f0f4ff',display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -893,8 +884,13 @@ export default function LandingERP() {
         <div style={{maxWidth:1200,margin:'0 auto'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:20,marginBottom:24}}>
             <div style={{display:'flex',alignItems:'center',gap:10}}>
+              {/* ── LOGO FOOTER: ganti pi-cog → logo-white.svg ── */}
               <div style={{width:34,height:34,borderRadius:9,background:'linear-gradient(135deg,#4f46e5,#7c3aed)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 14px rgba(79,70,229,0.4)'}}>
-                <i className="pi pi-cog" style={{color:'#fff',fontSize:'0.9rem'}}/>
+                <img
+                  src="/layout/images/logo-white.svg"
+                  alt="logo"
+                  style={{ width:20, height:20, objectFit:'contain' }}
+                />
               </div>
               <span style={{fontWeight:700,color:'#fff',fontSize:'1.05rem'}}>ERP<span style={{color:'#818cf8'}}>Jadwal</span></span>
             </div>

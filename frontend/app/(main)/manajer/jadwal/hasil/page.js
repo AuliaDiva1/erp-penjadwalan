@@ -1,3 +1,4 @@
+// halaman 2: HasilAlgoritmaPage
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { Toast }        from 'primereact/toast';
@@ -9,21 +10,56 @@ import { Dropdown }     from 'primereact/dropdown';
 import { InputText }    from 'primereact/inputtext';
 import { ProgressBar }  from 'primereact/progressbar';
 import { Dialog }       from 'primereact/dialog';
+import { Divider }      from 'primereact/divider';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
+const formatDate = (val) =>
+  val ? new Date(val).toLocaleString('id-ID', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }) : '-';
+
+const STATUS_CONFIG = {
+  draft:   { label: 'Draft',   severity: 'secondary' },
+  final:   { label: 'Final',   severity: 'success'   },
+  revised: { label: 'Revised', severity: 'warning'   },
+};
+
+const JOB_STATUS_SEVERITY = {
+  Pending:       'warning',
+  Scheduled:     'info',
+  'In Progress': 'success',
+  Completed:     'success',
+  Delayed:       'danger',
+  Failed:        'danger',
+};
+
+const getPriorityMeta = (score) => {
+  if (score >= 80) return { label: 'Tinggi',        severity: 'danger',  color: '#ef4444' };
+  if (score >= 60) return { label: 'Sedang',        severity: 'warning', color: '#f59e0b' };
+  if (score >= 40) return { label: 'Rendah',        severity: 'info',    color: '#3b82f6' };
+  return                   { label: 'Sangat Rendah', severity: 'success', color: '#22c55e' };
+};
+
+const isOverDeadline = (row) => {
+  if (!row.deadline_predicted || !row.scheduled_end) return false;
+  return new Date(row.scheduled_end) > new Date(row.deadline_predicted);
+};
+
 export default function HasilAlgoritmaPage() {
-  const toast                           = useRef(null);
-  const [schedules, setSchedules]       = useState([]);
-  const [selectedSchedule, setSelectedSchedule] = useState(null);
-  const [jobs, setJobs]                 = useState([]);
-  const [loading, setLoading]           = useState(false);
-  const [loadingJobs, setLoadingJobs]   = useState(false);
-  const [finalizing, setFinalizing]     = useState(false);
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [selectedJob, setSelectedJob]   = useState(null);
+  const toast = useRef(null);
+
+  const [schedules,         setSchedules]         = useState([]);
+  const [selectedSchedule,  setSelectedSchedule]  = useState(null);
+  const [jobs,              setJobs]              = useState([]);
+  const [loading,           setLoading]           = useState(false);
+  const [loadingJobs,       setLoadingJobs]       = useState(false);
+  const [finalizing,        setFinalizing]        = useState(false);
+  const [globalFilter,      setGlobalFilter]      = useState('');
+  const [detailVisible,     setDetailVisible]     = useState(false);
+  const [selectedJob,       setSelectedJob]       = useState(null);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
@@ -34,7 +70,11 @@ export default function HasilAlgoritmaPage() {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
-      if (data.success) setSchedules(data.data);
+      if (data.success) {
+        setSchedules(data.data);
+        // auto-select jadwal terbaru
+        if (data.data.length > 0) fetchJobsBySchedule(data.data[0]);
+      }
     } catch {
       toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat jadwal' });
     } finally {
@@ -44,6 +84,7 @@ export default function HasilAlgoritmaPage() {
 
   const fetchJobsBySchedule = async (schedule) => {
     setSelectedSchedule(schedule);
+    setJobs([]);
     setLoadingJobs(true);
     try {
       const res  = await fetch(`${BASE_URL}/pipeline/result/${schedule.id}`, {
@@ -60,11 +101,11 @@ export default function HasilAlgoritmaPage() {
 
   const handleFinalize = () => {
     confirmDialog({
-      message:     `Finalisasi jadwal ${selectedSchedule.schedule_code}? Jadwal tidak bisa diubah setelah final.`,
-      header:      'Konfirmasi Finalisasi',
-      icon:        'pi pi-check-circle',
-      acceptLabel: 'Ya, Finalisasi',
-      rejectLabel: 'Batal',
+      message:         `Finalisasi jadwal ${selectedSchedule.schedule_code}? Jadwal tidak dapat diubah setelah final.`,
+      header:          'Konfirmasi Finalisasi',
+      icon:            'pi pi-lock',
+      acceptLabel:     'Ya, Finalisasi',
+      rejectLabel:     'Batal',
       acceptClassName: 'p-button-success',
       accept: async () => {
         setFinalizing(true);
@@ -76,8 +117,8 @@ export default function HasilAlgoritmaPage() {
           const data = await res.json();
           if (data.success) {
             toast.current.show({ severity: 'success', summary: 'Berhasil', detail: 'Jadwal berhasil difinalisasi' });
-            await fetchSchedules();
             setSelectedSchedule(prev => ({ ...prev, status_jadwal: 'final', is_final: true }));
+            fetchSchedules();
           } else {
             toast.current.show({ severity: 'error', summary: 'Gagal', detail: data.message });
           }
@@ -92,91 +133,50 @@ export default function HasilAlgoritmaPage() {
 
   useEffect(() => { fetchSchedules(); }, []);
 
-  // Tidak ada auto-select — user harus pilih sendiri
-  // useEffect dihapus agar tidak default ke jadwal pertama
-
-  const formatDate = (val) =>
-    val ? new Date(val).toLocaleString('id-ID', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }) : '-';
-
-  const statusConfig = {
-    draft:   { label: 'Draft',   severity: 'secondary' },
-    final:   { label: 'Final',   severity: 'success'   },
-    revised: { label: 'Revised', severity: 'warning'   },
-  };
-
-  const jobStatusConfig = {
-    Pending:       'warning',
-    Scheduled:     'info',
-    'In Progress': 'success',
-    Completed:     'success',
-    Delayed:       'danger',
-    Failed:        'danger',
-  };
-
-  const getPriorityColor = (score) => {
-    if (score >= 80) return '#ef4444';
-    if (score >= 60) return '#f59e0b';
-    if (score >= 40) return '#3b82f6';
-    return '#22c55e';
-  };
-
-  const getPriorityLabel = (score) => {
-    if (score >= 80) return { label: 'Tinggi',        severity: 'danger'  };
-    if (score >= 60) return { label: 'Sedang',        severity: 'warning' };
-    if (score >= 40) return { label: 'Rendah',        severity: 'info'    };
-    return                   { label: 'Sangat Rendah', severity: 'success' };
-  };
-
-  const isDeadlineWarning = (row) => {
-    if (!row.deadline_predicted || !row.scheduled_end) return false;
-    return new Date(row.scheduled_end) > new Date(row.deadline_predicted);
-  };
-
+  // ── computed ─────────────────────────────────────
   const stats = {
-    total:    jobs.length,
-    on_time:  jobs.filter(j => !isDeadlineWarning(j)).length,
-    warning:  jobs.filter(j => isDeadlineWarning(j)).length,
+    total:        jobs.length,
+    on_time:      jobs.filter(j => !isOverDeadline(j)).length,
+    warning:      jobs.filter(j => isOverDeadline(j)).length,
     avg_priority: jobs.length > 0
       ? (jobs.reduce((s, j) => s + (j.priority_score || 0), 0) / jobs.length).toFixed(1)
-      : 0,
+      : '0',
   };
 
   const machineStats = jobs.reduce((acc, j) => {
-    const m = j.assigned_machine_id || '-';
-    if (!acc[m]) acc[m] = { machine: m, name: j.assigned_machine_name || m, count: 0, total_duration: 0 };
-    acc[m].count++;
-    acc[m].total_duration += j.processing_time || 0;
+    const key = j.assigned_machine_id || '-';
+    if (!acc[key]) acc[key] = { machine: key, name: j.assigned_machine_name || key, count: 0, total_duration: 0 };
+    acc[key].count++;
+    acc[key].total_duration += j.processing_time || 0;
     return acc;
   }, {});
 
+  // ── column templates ─────────────────────────────
   const priorityTemplate = (row) => {
     const score = row.priority_score || 0;
-    const p     = getPriorityLabel(score);
+    const meta  = getPriorityMeta(score);
     return (
       <div className="flex align-items-center gap-2">
         <ProgressBar
           value={Math.min(score, 100)}
           showValue={false}
-          style={{ height: '6px', width: '60px' }}
-          color={getPriorityColor(score)}
+          style={{ height: '6px', width: '56px' }}
+          color={meta.color}
         />
-        <span className="font-semibold text-sm" style={{ color: getPriorityColor(score) }}>
+        <span className="font-semibold text-sm" style={{ color: meta.color, minWidth: 32 }}>
           {score.toFixed(1)}
         </span>
-        <Tag value={p.label} severity={p.severity} />
+        <Tag value={meta.label} severity={meta.severity} style={{ fontSize: '0.7rem' }} />
       </div>
     );
   };
 
   const deadlineTemplate = (row) => {
-    const warning = isDeadlineWarning(row);
+    const over = isOverDeadline(row);
     return (
       <div className="flex align-items-center gap-1">
-        {warning && <i className="pi pi-exclamation-triangle" style={{ color: '#ef4444', fontSize: '0.9rem' }} />}
-        <span className={`text-sm ${warning ? 'text-red-500 font-semibold' : ''}`}>
+        {over && <i className="pi pi-exclamation-triangle text-red-500" style={{ fontSize: '0.85rem' }} />}
+        <span className={`text-sm ${over ? 'text-red-500 font-semibold' : ''}`}>
           {formatDate(row.deadline_predicted)}
         </span>
       </div>
@@ -193,53 +193,65 @@ export default function HasilAlgoritmaPage() {
   const scheduleTimeTemplate = (row) => (
     <div>
       <div className="text-sm">{formatDate(row.scheduled_start)}</div>
-      <div className="text-xs text-color-secondary">→ {formatDate(row.scheduled_end)}</div>
+      <div className="text-xs text-color-secondary">{formatDate(row.scheduled_end)}</div>
     </div>
   );
 
   const actionTemplate = (row) => (
     <Button
       icon="pi pi-eye"
-      rounded text severity="info"
-      tooltip="Detail"
+      rounded text severity="info" size="small"
+      tooltip="Lihat Detail"
+      tooltipOptions={{ position: 'left' }}
       onClick={() => { setSelectedJob(row); setDetailVisible(true); }}
     />
   );
 
   return (
-    <div>
+    <div className="flex flex-column gap-4">
       <Toast ref={toast} />
       <ConfirmDialog />
 
-      <div className="flex justify-content-between align-items-center mb-4">
+      {/* Header */}
+      <div className="flex justify-content-between align-items-start">
         <div>
-          <h2 className="m-0 mb-1">Hasil Algoritma Pipeline</h2>
-          <p className="m-0 text-color-secondary text-sm">
-            Hasil optimasi Random Forest, Fuzzy Mamdani, dan CCEA
+          <h2 className="m-0 text-900 font-semibold" style={{ fontSize: '1.2rem' }}>
+            Hasil Jadwal
+          </h2>
+          <p className="m-0 mt-1 text-color-secondary text-sm">
+            Hasil optimasi penjadwalan menggunakan Fuzzy Mamdani dan CCEA
           </p>
         </div>
-        <Button icon="pi pi-refresh" text onClick={fetchSchedules} loading={loading} tooltip="Refresh" />
+        <Button
+          icon="pi pi-refresh"
+          text
+          size="small"
+          onClick={fetchSchedules}
+          loading={loading}
+          tooltip="Refresh"
+        />
       </div>
 
-      {/* PILIH JADWAL */}
-      <div className="card mb-4">
-        <div className="flex align-items-center gap-3 flex-wrap">
-          <span className="font-semibold">Pilih Jadwal:</span>
+      {/* Pilih Jadwal */}
+      <div className="card p-0">
+        <div className="px-4 py-3 flex align-items-center gap-3 flex-wrap">
           <Dropdown
             value={selectedSchedule}
             options={schedules}
             onChange={(e) => fetchJobsBySchedule(e.value)}
             optionLabel="schedule_code"
-            placeholder="-- Pilih Jadwal untuk Ditampilkan --"
-            style={{ width: '280px' }}
-            emptyMessage="Belum ada jadwal tersedia"
+            placeholder="Pilih jadwal"
+            style={{ minWidth: '240px' }}
+            loading={loading}
+            emptyMessage="Belum ada jadwal"
             itemTemplate={(opt) => (
-              <div className="flex justify-content-between align-items-center gap-3">
-                <span className="font-semibold">{opt.schedule_code}</span>
-                <div className="flex gap-2">
+              <div className="flex justify-content-between align-items-center gap-3 py-1">
+                <span className="font-semibold text-sm">{opt.schedule_code}</span>
+                <div className="flex align-items-center gap-2">
                   <Tag
-                    value={statusConfig[opt.status_jadwal]?.label || opt.status_jadwal}
-                    severity={statusConfig[opt.status_jadwal]?.severity || 'info'}
+                    value={STATUS_CONFIG[opt.status_jadwal]?.label || opt.status_jadwal}
+                    severity={STATUS_CONFIG[opt.status_jadwal]?.severity || 'info'}
+                    style={{ fontSize: '0.7rem' }}
                   />
                   <span className="text-xs text-color-secondary">{opt.makespan} mnt</span>
                 </div>
@@ -250,17 +262,23 @@ export default function HasilAlgoritmaPage() {
           {selectedSchedule && (
             <div className="flex align-items-center gap-3 flex-wrap">
               <Tag
-                value={statusConfig[selectedSchedule.status_jadwal]?.label}
-                severity={statusConfig[selectedSchedule.status_jadwal]?.severity}
+                value={STATUS_CONFIG[selectedSchedule.status_jadwal]?.label}
+                severity={STATUS_CONFIG[selectedSchedule.status_jadwal]?.severity}
               />
-              <span className="text-sm">Makespan: <b>{selectedSchedule.makespan} menit</b></span>
-              <span className="text-sm">Jobs: <b>{selectedSchedule.total_jobs}</b></span>
-              <span className="text-sm">Mesin: <b>{selectedSchedule.total_machines}</b></span>
+              <span className="text-sm text-color-secondary">
+                Makespan: <span className="font-semibold text-900">{selectedSchedule.makespan} menit</span>
+              </span>
+              <span className="text-sm text-color-secondary">
+                Jobs: <span className="font-semibold text-900">{selectedSchedule.total_jobs}</span>
+              </span>
+              <span className="text-sm text-color-secondary">
+                Mesin: <span className="font-semibold text-900">{selectedSchedule.total_machines}</span>
+              </span>
 
               {selectedSchedule.status_jadwal === 'draft' && (
                 <Button
-                  label={finalizing ? 'Memfinalisasi...' : 'Finalisasi Jadwal'}
-                  icon={finalizing ? 'pi pi-spin pi-spinner' : 'pi pi-check-circle'}
+                  label="Finalisasi Jadwal"
+                  icon={finalizing ? 'pi pi-spin pi-spinner' : 'pi pi-lock'}
                   severity="success"
                   size="small"
                   onClick={handleFinalize}
@@ -268,45 +286,17 @@ export default function HasilAlgoritmaPage() {
                 />
               )}
               {selectedSchedule.status_jadwal === 'final' && (
-                <div className="flex align-items-center gap-1 text-green-600 text-sm font-semibold">
+                <span className="text-green-600 text-sm font-semibold flex align-items-center gap-1">
                   <i className="pi pi-lock" />
-                  <span>Jadwal sudah terkunci (Final)</span>
-                </div>
+                  Jadwal Final
+                </span>
               )}
               {selectedSchedule.status_jadwal === 'revised' && (
-                <div className="flex align-items-center gap-1 text-orange-500 text-sm font-semibold">
+                <span className="text-orange-500 text-sm font-semibold flex align-items-center gap-1">
                   <i className="pi pi-history" />
-                  <span>Jadwal ini telah direvisi</span>
-                </div>
+                  Telah Direvisi
+                </span>
               )}
-            </div>
-          )}
-
-          {/* Keterangan pipeline — selalu tampil */}
-          {!selectedSchedule && (
-            <div className="mt-3 w-full">
-              <div className="p-3 border-round" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                <p className="m-0 mb-2 font-semibold text-sm">Cara kerja Pipeline:</p>
-                <div className="flex flex-column gap-2">
-                  {[
-                    { step: '1', color: '#6366f1', label: 'Random Forest', desc: 'Memprediksi durasi aktual dan deadline tiap job berdasarkan pola historis dataset.' },
-                    { step: '2', color: '#f59e0b', label: 'Fuzzy Mamdani', desc: 'Menghitung skor prioritas job (0–100) menggunakan 27 rules IF-THEN dari tiga variabel input: Processing Time, Energy Consumption, dan Machine Availability.' },
-                    { step: '3', color: '#22c55e', label: 'CCEA',          desc: 'Mengalokasikan job ke mesin secara optimal untuk meminimalkan makespan (total waktu penyelesaian seluruh job).' },
-                  ].map((s) => (
-                    <div key={s.step} className="flex align-items-start gap-2">
-                      <div
-                        className="flex align-items-center justify-content-center border-round-sm font-bold text-white text-xs flex-shrink-0"
-                        style={{ width: 20, height: 20, background: s.color, marginTop: 2 }}
-                      >
-                        {s.step}
-                      </div>
-                      <span className="text-sm">
-                        <b>{s.label}</b> — {s.desc}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
         </div>
@@ -314,149 +304,164 @@ export default function HasilAlgoritmaPage() {
 
       {selectedSchedule && (
         <>
-          {/* STAT CARDS */}
-          <div className="grid mb-4">
+          {/* Stat Cards */}
+          <div className="grid" style={{ gap: 0 }}>
             {[
               { label: 'Makespan',         value: `${selectedSchedule.makespan} mnt`, icon: 'pi-clock',                color: '#6366f1', bg: '#eef2ff' },
               { label: 'Total Jobs',       value: stats.total,                         icon: 'pi-list',                 color: '#3b82f6', bg: '#eff6ff' },
               { label: 'Tepat Deadline',   value: stats.on_time,                       icon: 'pi-check-circle',         color: '#22c55e', bg: '#f0fdf4' },
               { label: 'Warning Deadline', value: stats.warning,                       icon: 'pi-exclamation-triangle', color: '#ef4444', bg: '#fef2f2' },
-              { label: 'Avg Prioritas',    value: stats.avg_priority,                  icon: 'pi-star',                 color: '#f59e0b', bg: '#fffbeb' },
+              { label: 'Rata-rata Skor',   value: stats.avg_priority,                  icon: 'pi-star',                 color: '#f59e0b', bg: '#fffbeb' },
             ].map((s, i) => (
-              <div key={i} className="col-12 md:col-6 lg:col">
-                <div className="card p-3 flex align-items-center gap-3" style={{ borderLeft: `4px solid ${s.color}` }}>
+              <div key={i} className="col-12 md:col-6 lg:col p-2">
+                <div
+                  className="flex align-items-center gap-3 p-3 border-round"
+                  style={{ background: 'var(--surface-card)', border: '1px solid var(--surface-border)', borderLeft: `4px solid ${s.color}` }}
+                >
                   <div
                     className="flex align-items-center justify-content-center border-round"
-                    style={{ width: 40, height: 40, background: s.bg, flexShrink: 0 }}
+                    style={{ width: 36, height: 36, background: s.bg, flexShrink: 0 }}
                   >
-                    <i className={`pi ${s.icon}`} style={{ fontSize: '1.1rem', color: s.color }} />
+                    <i className={`pi ${s.icon}`} style={{ fontSize: '1rem', color: s.color }} />
                   </div>
                   <div>
-                    <div className="text-xl font-bold">{s.value}</div>
-                    <div className="text-color-secondary text-xs">{s.label}</div>
+                    <div className="text-lg font-bold text-900">{s.value}</div>
+                    <div className="text-xs text-color-secondary">{s.label}</div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* DISTRIBUSI MESIN */}
-          <div className="card mb-4">
-            <h3 className="mt-0 mb-3">Distribusi Beban Mesin</h3>
-            <div className="grid">
+          {/* Distribusi Mesin */}
+          <div className="card p-0">
+            <div className="px-4 pt-4 pb-3">
+              <span className="font-semibold text-900 text-sm">Distribusi Beban Mesin</span>
+            </div>
+            <Divider className="m-0" />
+            <div className="grid px-4 py-3" style={{ gap: 0 }}>
               {Object.values(machineStats).map((m, i) => (
-                <div key={i} className="col-12 md:col-6 lg:col-4">
-                  <div className="mb-3">
-                    <div className="flex justify-content-between align-items-center mb-1">
-                      <span className="font-semibold text-sm">{m.name || m.machine}</span>
-                      <span className="text-xs text-color-secondary">{m.count} jobs | {m.total_duration} mnt</span>
-                    </div>
-                    <ProgressBar
-                      value={Math.round((m.count / stats.total) * 100)}
-                      style={{ height: '8px' }}
-                      color="#6366f1"
-                    />
+                <div key={i} className="col-12 md:col-6 lg:col-4 p-2">
+                  <div className="flex justify-content-between align-items-center mb-2">
+                    <span className="font-semibold text-sm text-900">{m.name || m.machine}</span>
+                    <span className="text-xs text-color-secondary">{m.count} jobs — {m.total_duration} mnt</span>
                   </div>
+                  <ProgressBar
+                    value={stats.total > 0 ? Math.round((m.count / stats.total) * 100) : 0}
+                    style={{ height: '7px' }}
+                    color="#6366f1"
+                  />
                 </div>
               ))}
             </div>
           </div>
 
-          {/* TABEL HASIL */}
-          <div className="card">
-            <div className="flex justify-content-between align-items-center mb-3">
-              <h3 className="m-0">Detail Hasil Penjadwalan</h3>
+          {/* Tabel Hasil */}
+          <div className="card p-0">
+            <div className="flex justify-content-between align-items-center px-4 pt-4 pb-3">
+              <span className="font-semibold text-900 text-sm">Detail Penjadwalan</span>
               <span className="p-input-icon-left">
                 <i className="pi pi-search" />
                 <InputText
                   value={globalFilter}
                   onChange={(e) => setGlobalFilter(e.target.value)}
                   placeholder="Cari job..."
-                  style={{ width: '220px' }}
+                  size="small"
+                  style={{ width: '200px' }}
                 />
               </span>
             </div>
+
+            <Divider className="m-0" />
 
             <DataTable
               value={jobs}
               loading={loadingJobs}
               paginator rows={10}
-              rowsPerPageOptions={[5, 10, 25]}
+              rowsPerPageOptions={[10, 25, 50]}
               stripedRows
+              size="small"
               globalFilter={globalFilter}
-              emptyMessage="Belum ada hasil pipeline"
+              emptyMessage="Belum ada data"
               sortField="priority_score"
               sortOrder={-1}
-              rowClassName={(row) => isDeadlineWarning(row) ? 'bg-red-50' : ''}
+              rowClassName={(row) => isOverDeadline(row) ? 'bg-red-50' : ''}
             >
-              <Column field="job_id"          header="Job ID"    sortable style={{ fontWeight: 600, width: '100px' }} />
-              <Column field="operation_type"  header="Operasi"   sortable style={{ width: '100px' }} />
-              <Column header="Mesin"          body={machineTemplate} style={{ width: '120px' }} />
-              <Column header="Jadwal"         body={scheduleTimeTemplate} style={{ minWidth: '160px' }} />
-              <Column field="processing_time" header="Durasi"    body={(r) => `${r.processing_time} mnt`} sortable style={{ width: '80px' }} />
-              <Column header="Skor Prioritas" body={priorityTemplate} sortable sortField="priority_score" style={{ minWidth: '180px' }} />
-              <Column header="Deadline"       body={deadlineTemplate} sortable sortField="deadline_predicted" style={{ minWidth: '160px' }} />
-              <Column header="Status"
-                body={(r) => <Tag value={r.job_status} severity={jobStatusConfig[r.job_status] || 'info'} />}
-                style={{ width: '100px' }}
+              <Column field="job_id"          header="Job ID"   sortable style={{ fontWeight: 600, fontSize: '0.85rem', width: 100 }} />
+              <Column field="operation_type"  header="Operasi"  sortable style={{ fontSize: '0.85rem', width: 110 }} />
+              <Column header="Mesin"          body={machineTemplate} style={{ width: 130 }} />
+              <Column header="Jadwal"         body={scheduleTimeTemplate} style={{ minWidth: 150 }} />
+              <Column field="processing_time" header="Durasi"   body={r => `${r.processing_time} mnt`} sortable style={{ fontSize: '0.85rem', width: 90 }} />
+              <Column header="Skor Prioritas" body={priorityTemplate} sortField="priority_score" sortable style={{ minWidth: 190 }} />
+              <Column header="Deadline"       body={deadlineTemplate} sortField="deadline_predicted" sortable style={{ minWidth: 160 }} />
+              <Column
+                header="Status"
+                body={r => <Tag value={r.job_status} severity={JOB_STATUS_SEVERITY[r.job_status] || 'info'} style={{ fontSize: '0.72rem' }} />}
+                style={{ width: 110 }}
               />
-              <Column header="Aksi" body={actionTemplate} style={{ width: '70px' }} />
+              <Column header="" body={actionTemplate} style={{ width: 60 }} />
             </DataTable>
           </div>
         </>
       )}
 
-      {/* DETAIL DIALOG */}
+      {/* Detail Dialog */}
       <Dialog
-        header={`Detail Job: ${selectedJob?.job_id}`}
+        header={`Job ${selectedJob?.job_id}`}
         visible={detailVisible}
-        style={{ width: '520px' }}
+        style={{ width: '480px' }}
         modal
-        onHide={() => setDetailVisible(false)}
         draggable={false}
         dismissableMask
+        onHide={() => setDetailVisible(false)}
       >
         {selectedJob && (
-          <div className="p-1">
-            <div className="grid">
-              {[
-                { label: 'Job ID',               value: selectedJob.job_id },
-                { label: 'Operation Type',        value: selectedJob.operation_type },
-                { label: 'Mesin',                 value: `${selectedJob.assigned_machine_id || '-'} - ${selectedJob.assigned_machine_name || '-'}` },
-                { label: 'Processing Time',       value: `${selectedJob.processing_time} menit` },
-                { label: 'Energy Consumption',    value: `${selectedJob.energy_consumption} kWh` },
-                { label: 'Machine Availability',  value: `${selectedJob.machine_availability}%` },
-                { label: 'Scheduled Start',       value: formatDate(selectedJob.scheduled_start) },
-                { label: 'Scheduled End',         value: formatDate(selectedJob.scheduled_end) },
-                { label: 'Deadline Prediksi',     value: formatDate(selectedJob.deadline_predicted) },
-                { label: 'Fuzzy Score (Crisp)',   value: selectedJob.fuzzy_score?.toFixed(4) },
-                { label: 'Skor Prioritas',        value: selectedJob.priority_score?.toFixed(4) },
-                { label: 'Optimization Category', value: selectedJob.optimization_category },
-                { label: 'Status',                value: selectedJob.job_status },
-              ].map((item, i) => (
-                <div key={i} className="col-12">
-                  <div className="flex justify-content-between align-items-center py-2"
-                    style={{ borderBottom: '1px solid var(--surface-border)' }}>
-                    <span className="text-color-secondary text-sm">{item.label}</span>
-                    <span className="font-semibold text-sm">{item.value || '-'}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div>
+            {[
+              { label: 'Job ID',               value: selectedJob.job_id },
+              { label: 'Operation Type',        value: selectedJob.operation_type },
+              { label: 'Mesin',                 value: `${selectedJob.assigned_machine_id || '-'} — ${selectedJob.assigned_machine_name || '-'}` },
+              { label: 'Processing Time',       value: `${selectedJob.processing_time} menit` },
+              { label: 'Energy Consumption',    value: `${selectedJob.energy_consumption} kWh` },
+              { label: 'Machine Availability',  value: `${selectedJob.machine_availability}%` },
+              { label: 'Scheduled Start',       value: formatDate(selectedJob.scheduled_start) },
+              { label: 'Scheduled End',         value: formatDate(selectedJob.scheduled_end) },
+              { label: 'Deadline Prediksi',     value: formatDate(selectedJob.deadline_predicted) },
+              { label: 'Fuzzy Score',           value: selectedJob.fuzzy_score?.toFixed(4) },
+              { label: 'Skor Prioritas',        value: selectedJob.priority_score?.toFixed(4) },
+              { label: 'Optimization Category', value: selectedJob.optimization_category },
+              { label: 'Status',                value: selectedJob.job_status },
+            ].map((item, i) => (
+              <div
+                key={i}
+                className="flex justify-content-between align-items-center py-2"
+                style={{ borderBottom: '1px solid var(--surface-border)' }}
+              >
+                <span className="text-color-secondary text-sm">{item.label}</span>
+                <span className="font-semibold text-sm text-900">{item.value || '-'}</span>
+              </div>
+            ))}
 
-            {isDeadlineWarning(selectedJob) && (
-              <div className="p-3 border-round mt-3" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-                <div className="flex align-items-center gap-2">
-                  <i className="pi pi-exclamation-triangle" style={{ color: '#ef4444' }} />
-                  <span className="text-sm font-semibold text-red-500">
-                    Scheduled End melewati Deadline Prediksi!
-                  </span>
-                </div>
+            {isOverDeadline(selectedJob) && (
+              <div
+                className="flex align-items-center gap-2 p-3 border-round mt-3"
+                style={{ background: '#fef2f2', border: '1px solid #fecaca' }}
+              >
+                <i className="pi pi-exclamation-triangle text-red-500" />
+                <span className="text-sm font-semibold text-red-500">
+                  Scheduled End melewati Deadline Prediksi
+                </span>
               </div>
             )}
 
             <div className="flex justify-content-end mt-4">
-              <Button label="Tutup" icon="pi pi-times" className="p-button-text" onClick={() => setDetailVisible(false)} />
+              <Button
+                label="Tutup"
+                icon="pi pi-times"
+                text
+                size="small"
+                onClick={() => setDetailVisible(false)}
+              />
             </div>
           </div>
         )}

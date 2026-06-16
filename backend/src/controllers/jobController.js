@@ -1,6 +1,7 @@
 import { success, error } from '../utils/response.js';
 import * as Model from '../models/jobModel.js';
 import { db } from '../core/config/knex.js';
+import { getOperationTypeById } from '../models/operationTypeModel.js';
 
 const formatDateToMySQL = (dateStr) => {
   if (!dateStr) return null;
@@ -65,20 +66,18 @@ export const getIdleMachinesController = async (req, res) => {
 export const createJobController = async (req, res) => {
   try {
     const {
-      machine_id, material_id, operation_type,
-      processing_time, material_used,
-      deadline_customer, is_urgent,
+      machine_id, material_id, operation_id,
+      material_used, deadline_customer, is_urgent,
     } = req.body;
 
-    if (!operation_type)
-      return res.status(400).json({ success: false, message: 'Operation type wajib diisi' });
+    if (!operation_id)
+      return res.status(400).json({ success: false, message: 'Operation type wajib dipilih' });
 
-    const validOperations = ['Grinding', 'Additive', 'Lathe', 'Milling', 'Drilling'];
-    if (!validOperations.includes(operation_type))
-      return res.status(400).json({ success: false, message: 'Operation type tidak valid' });
-
-    if (!processing_time || processing_time < 20 || processing_time > 120)
-      return res.status(400).json({ success: false, message: 'Processing time harus antara 20-120 menit' });
+    const opType = await getOperationTypeById(operation_id);
+    if (!opType)
+      return res.status(404).json({ success: false, message: 'Operation type tidak ditemukan' });
+    if (!opType.is_active)
+      return res.status(400).json({ success: false, message: 'Operation type tidak aktif' });
 
     if (material_id && material_used) {
       const material = await db('materials').where({ id: material_id }).first();
@@ -116,11 +115,10 @@ export const createJobController = async (req, res) => {
       user_id:            req.user?.userId || null,
       machine_id:         machine_id       || null,
       material_id:        material_id      || null,
-      operation_type,
-      processing_time,
+      operation_id,
       material_used:      material_used    || null,
       deadline_customer:  deadlineCustomerFormatted,
-      deadline_is_manual: deadlineCustomerFormatted ? true : false,
+      deadline_is_manual: !!deadlineCustomerFormatted,
       deadline:           deadlineCustomerFormatted,
       is_urgent:          is_urgent || false,
       job_status:         'Pending',
@@ -130,7 +128,7 @@ export const createJobController = async (req, res) => {
       success: true,
       message: 'Job berhasil ditambahkan',
       data:    job,
-      info:    deadlineCustomerFormatted
+      info: deadlineCustomerFormatted
         ? 'Deadline customer tersimpan. Sistem akan memvalidasi saat pipeline dijalankan.'
         : 'Deadline akan diprediksi otomatis oleh sistem saat pipeline dijalankan.',
     });
@@ -149,24 +147,34 @@ export const updateJobController = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Job yang sedang In Progress tidak dapat diedit' });
 
     const {
-      machine_id, material_id, operation_type,
-      processing_time, energy_consumption,
-      machine_availability, material_used,
+      machine_id, material_id, operation_id,
+      energy_consumption, machine_availability,
+      material_used, processing_time,
       deadline_customer, job_status,
       is_urgent, priority_override,
     } = req.body;
 
+    let recalcProcessingTime = processing_time;
+    if (!recalcProcessingTime && (operation_id || material_used !== undefined)) {
+      const opId     = operation_id || job.operation_id;
+      const matUsed  = material_used ?? job.material_used ?? 0;
+      const opType   = await db('operation_types').where({ id: opId }).first();
+      const baseTime = opType?.base_time     ?? 20;
+      const tpu      = opType?.time_per_unit ?? 15;
+      recalcProcessingTime = Math.round(baseTime + (matUsed * tpu));
+    }
+
     const updated = await Model.updateJob(req.params.id, {
       machine_id,
       material_id,
-      operation_type,
-      processing_time,
+      operation_id,
+      processing_time:     recalcProcessingTime,
       energy_consumption,
       machine_availability,
       material_used,
-      deadline_customer:  formatDateToMySQL(deadline_customer),
-      deadline_is_manual: deadline_customer ? true : undefined,
-      deadline:           deadline_customer ? formatDateToMySQL(deadline_customer) : undefined,
+      deadline_customer:   formatDateToMySQL(deadline_customer),
+      deadline_is_manual:  deadline_customer ? true : undefined,
+      deadline:            deadline_customer ? formatDateToMySQL(deadline_customer) : undefined,
       job_status,
       is_urgent,
       priority_override,
@@ -309,6 +317,43 @@ export const rescheduleJobController = async (req, res) => {
   } catch (err) {
     console.error('rescheduleJob error:', err);
     return error(res, 'Gagal melakukan reschedule job');
+  }
+};
+
+export const resetJobsBatchController = async (req, res) => {
+  try {
+    const { job_ids } = req.body;
+
+    if (!Array.isArray(job_ids) || job_ids.length === 0)
+      return res.status(400).json({ success: false, message: 'job_ids harus array non-kosong' });
+
+    const inProgress = await db('jobs')
+      .whereIn('id', job_ids)
+      .where('job_status', 'In Progress')
+      .select('job_id');
+
+    if (inProgress.length > 0)
+      return res.status(400).json({
+        success: false,
+        message: `Job berikut sedang In Progress, tidak bisa direset: ${inProgress.map(j => j.job_id).join(', ')}`,
+      });
+
+    await db('jobs')
+      .whereIn('id', job_ids)
+      .whereNot('job_status', 'In Progress')
+      .update({
+        job_status:          'Pending',
+        schedule_id:         null,
+        assigned_machine_id: null,
+        scheduled_start:     null,
+        scheduled_end:       null,
+        updated_at:          db.fn.now(),
+      });
+
+    return success(res, `${job_ids.length} job berhasil direset ke Pending`);
+  } catch (err) {
+    console.error('resetJobsBatch error:', err);
+    return error(res, 'Gagal mereset job');
   }
 };
 

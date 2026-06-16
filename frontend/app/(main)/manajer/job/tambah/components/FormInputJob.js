@@ -2,72 +2,112 @@
 import { useState, useEffect, useRef } from 'react';
 import { Toast } from 'primereact/toast';
 import { Button } from 'primereact/button';
-import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
+import { InputNumber } from 'primereact/inputnumber';
 import { useRouter } from 'next/navigation';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
-const OPERATION_TYPES = [
-  { label: 'Additive Manufacturing', value: 'Additive' },
-  { label: 'Milling',                value: 'Milling'  },
-  { label: 'Grinding',               value: 'Grinding' },
-  { label: 'Lathe',                  value: 'Lathe'    },
-  { label: 'Drilling',               value: 'Drilling' },
-];
-
 const defaultForm = {
   operation_type:    null,
   material_id:       null,
-  processing_time:   null,
-  deadline_customer: null,
   material_used:     null,
+  deadline_customer: null,
   is_urgent:         false,
 };
 
+const toLocalDatetimeString = (date) => {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 const FormInputJob = () => {
-  const toast      = useRef(null);
-  const router     = useRouter();
-  const [materials,    setMaterials]    = useState([]);
-  const [loading,      setLoading]      = useState(false);
-  const [saving,       setSaving]       = useState(false);
-  const [form,         setForm]         = useState(defaultForm);
-  const [stockWarning, setStockWarning] = useState(null);
+  const toast     = useRef(null);
+  const routerNav = useRouter();
+
+  const [form,             setForm]             = useState(defaultForm);
+  const [saving,           setSaving]           = useState(false);
+  const [operationTypes,   setOperationTypes]   = useState([]);
+  const [bahanBakuOptions, setBahanBakuOptions] = useState([]);
+  const [loadingBahan,     setLoadingBahan]     = useState(false);
+  const [stockWarning,     setStockWarning]     = useState(null);
 
   const getToken = () => localStorage.getItem('TOKEN');
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const resMaterials = await fetch(`${BASE_URL}/materials`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const dataMaterials = await resMaterials.json();
-      if (dataMaterials.success) {
-        setMaterials(dataMaterials.data.map(m => ({
-          label: `${m.kode_bahan_baku} - ${m.material_name} (stok: ${m.current_stock} ${m.nama_satuan})`,
-          value: m.id,
-          data:  m,
-        })));
-      }
-    } catch {
-      toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchData(); }, []);
-
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
-  const handleMaterialChange = (materialId) => {
-    set('material_id', materialId);
+  useEffect(() => {
+    const fetchOperationTypes = async () => {
+      try {
+        const res  = await fetch(`${BASE_URL}/operation-types`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        const data = await res.json();
+        if (data.success) {
+          setOperationTypes(data.data.map(op => ({
+            label:               op.nama_operasi,
+            value:               op.id,
+            max_processing_time: op.max_processing_time,
+            base_time:           op.base_time,
+            time_per_unit:       op.time_per_unit,
+          })));
+        }
+      } catch {
+        toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat jenis operasi' });
+      }
+    };
+    fetchOperationTypes();
+  }, []);
+
+  useEffect(() => {
+    if (!form.operation_type) {
+      setBahanBakuOptions([]);
+      set('material_id', null);
+      return;
+    }
+    const fetchBahanBaku = async () => {
+      setLoadingBahan(true);
+      setBahanBakuOptions([]);
+      set('material_id', null);
+      setStockWarning(null);
+      try {
+        const res  = await fetch(
+          `${BASE_URL}/materials?operation_type_id=${form.operation_type}`,
+          { headers: { Authorization: `Bearer ${getToken()}` } }
+        );
+        const data = await res.json();
+        if (data.success) {
+          setBahanBakuOptions(data.data.map(m => ({
+            label: `${m.kode_bahan_baku} - ${m.material_name} (stok: ${m.current_stock} ${m.nama_satuan})`,
+            value: m.id,
+            data:  m,
+          })));
+        }
+      } catch {
+        toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat bahan baku' });
+      } finally {
+        setLoadingBahan(false);
+      }
+    };
+    fetchBahanBaku();
+  }, [form.operation_type]);
+
+  const selectedOpType = operationTypes.find(op => op.value === form.operation_type);
+  const maxMaterial = selectedOpType?.base_time && selectedOpType?.time_per_unit
+    ? Math.floor((selectedOpType.max_processing_time - selectedOpType.base_time) / selectedOpType.time_per_unit)
+    : null;
+
+  const handleBahanBakuChange = (id) => {
+    set('material_id', id);
+    set('material_used', null);
     setStockWarning(null);
-    const selected = materials.find(m => m.value === materialId);
+    const selected = bahanBakuOptions.find(m => m.value === id);
     if (selected?.data && selected.data.current_stock <= selected.data.min_stock_level) {
-      setStockWarning(`Stok ${selected.data.material_name} hampir habis: ${selected.data.current_stock} ${selected.data.nama_satuan}`);
+      setStockWarning(
+        `Stok ${selected.data.material_name} hampir habis: ${selected.data.current_stock} ${selected.data.nama_satuan}`
+      );
     }
   };
 
@@ -76,12 +116,12 @@ const FormInputJob = () => {
       toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Operation type wajib dipilih' });
       return false;
     }
-    if (!form.processing_time) {
-      toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Processing time wajib diisi' });
-      return false;
-    }
-    if (form.processing_time < 20 || form.processing_time > 120) {
-      toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Processing time harus antara 20-120 menit' });
+    if (maxMaterial && form.material_used > maxMaterial) {
+      toast.current.show({
+        severity: 'warn',
+        summary:  'Material terlalu banyak',
+        detail:   `Maksimum ${maxMaterial} unit untuk operasi ini (batas waktu ${selectedOpType?.max_processing_time} menit)`,
+      });
       return false;
     }
     return true;
@@ -94,14 +134,13 @@ const FormInputJob = () => {
       const res = await fetch(`${BASE_URL}/jobs`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body:    JSON.stringify({
-          operation_type:    form.operation_type,
-          material_id:       form.material_id,
-          processing_time:   form.processing_time,
-          material_used:     form.material_used,
+        body: JSON.stringify({
+          operation_id:      form.operation_type,
+          material_id:       form.material_id    || null,
+          material_used:     form.material_used  || null,
           is_urgent:         form.is_urgent,
           machine_id:        null,
-          deadline_customer: form.deadline_customer ? form.deadline_customer.toISOString() : null,
+          deadline_customer: toLocalDatetimeString(form.deadline_customer),
         }),
       });
       const data = await res.json();
@@ -110,9 +149,9 @@ const FormInputJob = () => {
         toast.current.show({
           severity: 'success',
           summary:  'Berhasil',
-          detail:   `Job ${data.data?.job_id || ''} berhasil ditambahkan dengan status Pending`,
+          detail:   `Job ${data.data?.job_id || ''} berhasil ditambahkan`,
         });
-        setTimeout(() => router.push('/manajer/job/riwayat'), 1500);
+        setTimeout(() => routerNav.push('/manajer/job/riwayat'), 1500);
       } else if (data.stockInsufficient) {
         toast.current.show({
           severity: 'warn',
@@ -132,213 +171,156 @@ const FormInputJob = () => {
 
   const handleReset = () => {
     setForm(defaultForm);
+    setBahanBakuOptions([]);
     setStockWarning(null);
   };
+
+  const fieldStyle  = { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' };
+  const labelStyle  = { fontWeight: '600', fontSize: '0.875rem', color: 'var(--text-color)' };
 
   return (
     <>
       <Toast ref={toast} />
 
-      <div className="grid">
-        <div className="col-12 lg:col-8">
-          <div className="card">
-            <h3 className="mt-0 mb-4">Informasi Job</h3>
+      <div style={{ maxWidth: '640px', margin: '0 auto' }}>
+        <div className="card" style={{ borderRadius: '16px', padding: '2rem' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '1.75rem', fontSize: '1.1rem' }}>
+            Input Job Baru
+          </h3>
 
-            <div className="formgrid grid">
-
-              {/* Operation Type */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">
-                  Operation Type <span className="text-red-500">*</span>
-                </label>
-                <Dropdown
-                  value={form.operation_type}
-                  options={OPERATION_TYPES}
-                  onChange={(e) => set('operation_type', e.value)}
-                  placeholder="-- Pilih Jenis Operasi --"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              {/* Tingkat Urgensi Job — dipindah berpasangan dengan Operation Type */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">Tingkat Urgensi Job</label>
-                <div
-                  className="flex gap-3"
-                  style={{
-                    border: '1px solid var(--surface-border)',
-                    borderRadius: '6px',
-                    padding: '0.5rem 0.75rem',
-                    background: 'var(--surface-ground)',
-                    height: '2.857rem',
-                    alignItems: 'center',
-                  }}
-                >
-                  <label
-                    className="flex align-items-center gap-2 cursor-pointer"
-                    style={{
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '4px',
-                      background: form.is_urgent === true ? '#fef3c7' : 'transparent',
-                      border: form.is_urgent === true ? '1px solid #f59e0b' : '1px solid transparent',
-                      color: form.is_urgent === true ? '#b45309' : 'inherit',
-                      fontWeight: form.is_urgent === true ? '600' : 'normal',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="is_urgent"
-                      checked={form.is_urgent === true}
-                      onChange={() => set('is_urgent', true)}
-                    />
-                    <i className="pi pi-bolt" style={{ fontSize: '0.8rem' }} />
-                    Urgent
-                  </label>
-                  <label
-                    className="flex align-items-center gap-2 cursor-pointer"
-                    style={{
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '4px',
-                      background: form.is_urgent === false ? '#f0fdf4' : 'transparent',
-                      border: form.is_urgent === false ? '1px solid #22c55e' : '1px solid transparent',
-                      color: form.is_urgent === false ? '#15803d' : 'inherit',
-                      fontWeight: form.is_urgent === false ? '600' : 'normal',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="is_urgent"
-                      checked={form.is_urgent === false}
-                      onChange={() => set('is_urgent', false)}
-                    />
-                    Normal
-                  </label>
-                </div>
-                <small className="text-color-secondary">Tingkat prioritas pemrosesan job ini</small>
-              </div>
-
-              {/* Bahan Baku */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">Bahan Baku</label>
-                <Dropdown
-                  value={form.material_id}
-                  options={materials}
-                  onChange={(e) => handleMaterialChange(e.value)}
-                  placeholder="-- Pilih Bahan Baku --"
-                  filter
-                  style={{ width: '100%' }}
-                  loading={loading}
-                />
-                {stockWarning && (
-                  <small className="text-orange-500">{stockWarning}</small>
-                )}
-              </div>
-
-              {/* Material Used */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">Jumlah Material Digunakan</label>
-                <InputNumber
-                  value={form.material_used}
-                  onValueChange={(e) => set('material_used', e.value)}
-                  min={0}
-                  minFractionDigits={2}
-                  placeholder="Jumlah material yang digunakan"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              {/* Processing Time */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">
-                  Processing Time (menit) <span className="text-red-500">*</span>
-                </label>
-                <InputNumber
-                  value={form.processing_time}
-                  onValueChange={(e) => set('processing_time', e.value)}
-                  min={20} max={120}
-                  showButtons
-                  suffix=" menit"
-                  style={{ width: '100%' }}
-                />
-                <small className="text-color-secondary">Min: 20 | Max: 120 menit</small>
-              </div>
-
-              {/* Deadline Customer — sekarang berdiri sendiri, tidak berdekatan dengan urgensi */}
-              <div className="field col-12 md:col-6">
-                <label className="font-bold block mb-2">Deadline Customer</label>
-                <Calendar
-                  value={form.deadline_customer}
-                  onChange={(e) => set('deadline_customer', e.value)}
-                  showTime hourFormat="24"
-                  showIcon
-                  minDate={new Date()}
-                  placeholder="Pilih deadline customer"
-                  style={{ width: '100%' }}
-                />
-                <small className="text-color-secondary">Opsional — sistem prediksi otomatis jika kosong</small>
-              </div>
-
-            </div>
-
-            <div className="flex justify-content-end gap-2 mt-4">
-              <Button
-                label="Reset"
-                icon="pi pi-undo"
-                severity="secondary"
-                text
-                onClick={handleReset}
-                disabled={saving}
-              />
-              <Button
-                label={saving ? 'Menyimpan...' : 'Simpan Job'}
-                icon={saving ? 'pi pi-spin pi-spinner' : 'pi pi-check'}
-                onClick={handleSubmit}
-                disabled={saving}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* PANEL KANAN */}
-        <div className="col-12 lg:col-4">
-          <div className="card mb-4">
-            <h3 className="mt-0 mb-3">Preview Job</h3>
-            {[
-              { label: 'Operation Type',  value: form.operation_type || '-' },
-              { label: 'Mesin',           value: 'Ditentukan otomatis oleh CCEA' },
-              { label: 'Processing Time', value: form.processing_time ? `${form.processing_time} menit` : '-' },
-              { label: 'Energy',          value: 'Otomatis dari sistem' },
-              { label: 'Availability',    value: 'Otomatis dari sistem' },
-              { label: 'Tingkat Urgensi', value: form.is_urgent ? '⚡ Urgent' : '✅ Normal' },
-              { label: 'Deadline',        value: form.deadline_customer ? new Date(form.deadline_customer).toLocaleString('id-ID') : 'Prediksi otomatis' },
-              { label: 'Status Awal',     value: 'Pending' },
-            ].map((item, i) => (
-              <div key={i} className="flex justify-content-between align-items-center py-2"
-                style={{ borderBottom: '1px solid var(--surface-border)' }}>
-                <span className="text-color-secondary text-sm">{item.label}</span>
-                <span className="font-semibold text-sm">{item.value}</span>
-              </div>
-            ))}
+          {/* Operation Type */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              Jenis Operasi <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <Dropdown
+              value={form.operation_type}
+              options={operationTypes}
+              onChange={e => {
+                set('operation_type', e.value);
+                set('material_id', null);
+                set('material_used', null);
+                setStockWarning(null);
+              }}
+              placeholder={operationTypes.length === 0 ? 'Memuat...' : 'Pilih jenis operasi'}
+              style={{ width: '100%', borderRadius: '10px' }}
+            />
           </div>
 
-          <div className="card">
-            <h3 className="mt-0 mb-3">Panduan Pengisian</h3>
-            {[
-              { icon: 'pi-star',     color: '#6366f1', text: 'Operation Type menentukan bobot prioritas Fuzzy Mamdani' },
-              { icon: 'pi-bolt',     color: '#f59e0b', text: 'Tingkat Urgensi Job menentukan prioritas pemrosesan — Urgent berarti job didahulukan dalam antrian' },
-              { icon: 'pi-cog',      color: '#8b5cf6', text: 'Mesin ditentukan otomatis oleh algoritma CCEA saat pipeline dijalankan' },
-              { icon: 'pi-clock',    color: '#22c55e', text: 'Processing time harus 20-120 menit sesuai dataset' },
-              { icon: 'pi-database', color: '#3b82f6', text: 'Energy consumption & machine availability diisi otomatis sistem berdasarkan jenis operasi' },
-              { icon: 'pi-calendar', color: '#06b6d4', text: 'Deadline opsional, sistem prediksi otomatis via Random Forest' },
-              { icon: 'pi-play',     color: '#ef4444', text: 'Setelah disimpan, jalankan pipeline untuk mendapat jadwal optimal' },
-            ].map((item, i) => (
-              <div key={i} className="flex align-items-start gap-2 mb-3">
-                <i className={`pi ${item.icon} mt-1`} style={{ color: item.color, fontSize: '0.9rem' }} />
-                <span className="text-xs text-color-secondary">{item.text}</span>
-              </div>
-            ))}
+          {/* Bahan Baku */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Bahan Baku</label>
+            <Dropdown
+              value={form.material_id}
+              options={bahanBakuOptions}
+              onChange={e => handleBahanBakuChange(e.value)}
+              placeholder={
+                !form.operation_type          ? 'Pilih jenis operasi dulu' :
+                loadingBahan                  ? 'Memuat...' :
+                bahanBakuOptions.length === 0 ? 'Tidak ada bahan baku tersedia' :
+                'Pilih bahan baku'
+              }
+              disabled={!form.operation_type || loadingBahan}
+              filter
+              style={{ width: '100%', borderRadius: '10px' }}
+            />
+            {stockWarning && (
+              <small style={{ color: '#f97316' }}>{stockWarning}</small>
+            )}
+          </div>
+
+          {/* Jumlah Material */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Jumlah Material Digunakan</label>
+            <InputNumber
+              value={form.material_used}
+              onValueChange={e => set('material_used', e.value)}
+              min={0}
+              max={maxMaterial ?? undefined}
+              minFractionDigits={2}
+              placeholder="Opsional"
+              disabled={!form.material_id}
+              style={{ width: '100%' }}
+              inputStyle={{ borderRadius: '10px' }}
+            />
+            {maxMaterial && form.material_id && (
+              <small style={{ color: 'var(--text-color-secondary)' }}>
+                Maks <strong>{maxMaterial} unit</strong> untuk operasi ini
+                (estimasi waktu maks {selectedOpType?.max_processing_time} menit)
+              </small>
+            )}
+          </div>
+
+          {/* Prioritas */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Prioritas Job</label>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              {[
+                { val: false, label: 'Normal', icon: 'pi-check-circle', activeColor: '#22c55e', activeBg: '#f0fdf4', activeBorder: '#22c55e' },
+                { val: true,  label: 'Urgent', icon: 'pi-bolt',         activeColor: '#f59e0b', activeBg: '#fffbeb', activeBorder: '#f59e0b' },
+              ].map(opt => {
+                const active = form.is_urgent === opt.val;
+                return (
+                  <button
+                    key={String(opt.val)}
+                    type="button"
+                    onClick={() => set('is_urgent', opt.val)}
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: '0.5rem', padding: '0.65rem 1rem', borderRadius: '10px',
+                      border:     `1.5px solid ${active ? opt.activeBorder : 'var(--surface-border)'}`,
+                      background: active ? opt.activeBg : 'var(--surface-ground)',
+                      color:      active ? opt.activeColor : 'var(--text-color-secondary)',
+                      fontWeight: active ? '600' : '400',
+                      fontSize:   '0.875rem', cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                  >
+                    <i className={`pi ${opt.icon}`} style={{ fontSize: '0.85rem' }} />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {form.is_urgent && (
+              <small style={{ color: '#f59e0b' }}>
+                Job urgent mendapat boost prioritas dalam antrian penjadwalan
+              </small>
+            )}
+          </div>
+
+          {/* Deadline Customer */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Deadline Customer</label>
+            <Calendar
+              value={form.deadline_customer}
+              onChange={e => set('deadline_customer', e.value)}
+              showTime
+              hourFormat="24"
+              showIcon
+              minDate={new Date()}
+              placeholder="Opsional — prediksi otomatis jika kosong"
+              style={{ width: '100%' }}
+              inputStyle={{ borderRadius: '10px' }}
+            />
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <Button
+              label="Reset"
+              icon="pi pi-undo"
+              severity="secondary"
+              text
+              onClick={handleReset}
+              disabled={saving}
+            />
+            <Button
+              label={saving ? 'Menyimpan...' : 'Simpan Job'}
+              icon={saving ? 'pi pi-spin pi-spinner' : 'pi pi-check'}
+              onClick={handleSubmit}
+              disabled={saving}
+              style={{ borderRadius: '10px' }}
+            />
           </div>
         </div>
       </div>

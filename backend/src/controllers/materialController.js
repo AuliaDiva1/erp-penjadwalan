@@ -12,9 +12,11 @@ import {
 import { getOperationTypeById }                         from '../models/operationTypeModel.js';
 import { createAutoProcurement, hasPendingProcurement } from '../models/procurementModel.js';
 
+// ← tambah destructure operation_type_id dari query
 export const getAllMaterialsController = async (req, res) => {
   try {
-    const materials = await getAllMaterials();
+    const { operation_type_id } = req.query;
+    const materials = await getAllMaterials({ operation_type_id });
     res.json({ success: true, data: materials });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -145,7 +147,6 @@ export const updateStockController = async (req, res) => {
     const updated = await getMaterialById(req.params.id);
     const isLow   = updated.current_stock <= updated.min_stock_level;
 
-    // ✅ trigger pengadaan otomatis jika stok kritis/habis & belum ada yg pending
     let autoProcurement = null;
     if (isLow) {
       const sudahAda = await hasPendingProcurement(req.params.id);

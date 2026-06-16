@@ -13,5 +13,6 @@ router.get('/', authenticate, getMaterialsByOperationTypeController);
 router.post('/', authenticate, authorizeAdmin, createOperationMaterial);
 router.put('/:id', authenticate, authorizeAdmin, updateOperationMaterialController);
 router.delete('/:id', authenticate, authorizeAdmin, deleteOperationMaterialController);
+router.get('/:operation_type_id', authenticate, getMaterialsByOperationTypeController);
 
 export default router;
