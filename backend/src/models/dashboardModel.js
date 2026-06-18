@@ -78,9 +78,10 @@ export const getJobStats = async () => {
 
 export const getRecentJobs = async () =>
   db('jobs as j')
-    .leftJoin('machines as mc', 'j.machine_id', 'mc.machine_id')
+    .leftJoin('machines as mc',        'j.machine_id',   'mc.machine_id')
+    .leftJoin('operation_types as ot', 'j.operation_id', 'ot.id')
     .select(
-      'j.id', 'j.job_id', 'j.operation_type',
+      'j.id', 'j.job_id', 'ot.nama_operasi as operation_type',
       'j.job_status', 'j.scheduled_start', 'j.scheduled_end',
       'j.actual_start', 'j.actual_end', 'j.updated_at',
       'mc.machine_name'
@@ -90,10 +91,11 @@ export const getRecentJobs = async () =>
 
 export const getInProgressJobs = async () =>
   db('jobs as j')
-    .leftJoin('machines as mc', 'j.machine_id', 'mc.machine_id')
+    .leftJoin('machines as mc',        'j.machine_id',   'mc.machine_id')
+    .leftJoin('operation_types as ot', 'j.operation_id', 'ot.id')
     .whereIn('j.job_status', ['In Progress', 'Scheduled'])
     .select(
-      'j.id', 'j.job_id', 'j.operation_type',
+      'j.id', 'j.job_id', 'ot.nama_operasi as operation_type',
       'j.job_status', 'j.scheduled_start', 'j.scheduled_end',
       'mc.machine_name'
     )

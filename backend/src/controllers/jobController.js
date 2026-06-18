@@ -8,6 +8,16 @@ const formatDateToMySQL = (dateStr) => {
   return dateStr.replace('T', ' ').replace('Z', '');
 };
 
+const getReservedStock = async (material_id, exclude_job_id = null) => {
+  const query = db('jobs')
+    .where({ material_id })
+    .whereIn('job_status', ['Pending', 'Scheduled', 'In Progress'])
+    .whereNotNull('material_used');
+  if (exclude_job_id) query.whereNot('id', exclude_job_id);
+  const result = await query.sum('material_used as total').first();
+  return Number(result?.total) || 0;
+};
+
 export const getAllJobsController = async (req, res) => {
   try {
     const data = await Model.getAllJobs();
@@ -79,12 +89,22 @@ export const createJobController = async (req, res) => {
     if (!opType.is_active)
       return res.status(400).json({ success: false, message: 'Operation type tidak aktif' });
 
+    if (opType.requires_material) {
+      if (!material_id)
+        return res.status(400).json({ success: false, message: 'Bahan baku wajib dipilih untuk operasi ini' });
+      if (!material_used || material_used <= 0)
+        return res.status(400).json({ success: false, message: 'Jumlah material wajib diisi untuk kalkulasi processing time' });
+    }
+
     if (material_id && material_used) {
       const material = await db('materials').where({ id: material_id }).first();
       if (!material)
         return res.status(404).json({ success: false, message: 'Material tidak ditemukan' });
 
-      if (material.current_stock < material_used) {
+      const reserved  = await getReservedStock(material_id);
+      const available = material.current_stock - reserved;
+
+      if (available < material_used) {
         const alreadyPending = await db('procurements')
           .where({ material_id, status: 'pending' })
           .first();
@@ -93,21 +113,26 @@ export const createJobController = async (req, res) => {
           await db('procurements').insert({
             material_id,
             user_id:                  req.user?.userId || null,
-            required_qty:             material_used - material.current_stock,
+            required_qty:             material_used - available,
             current_stock_at_trigger: material.current_stock,
             status:                   'pending',
             is_auto:                  true,
-            notes:                    'Auto-triggered: stok tidak cukup untuk job baru',
+            notes:                    'Auto-triggered: stok tersedia tidak cukup untuk job baru (termasuk reservasi job aktif)',
           });
         }
 
         return res.status(400).json({
           success:           false,
           stockInsufficient: true,
-          message: `Stok ${material.material_name} tidak cukup. Stok: ${material.current_stock}, dibutuhkan: ${material_used}. Notifikasi pengadaan otomatis telah dikirim.`,
+          message: `Stok ${material.material_name} tidak cukup. Stok fisik: ${material.current_stock}, direservasi job lain: ${reserved}, tersedia: ${available}, dibutuhkan: ${material_used}.`,
         });
       }
     }
+
+    const baseTime        = opType.base_time ?? 20;
+    const tpu             = opType.time_per_unit ?? 15;
+    const matUsed         = material_used || 0;
+    const processing_time = Math.round(baseTime + (matUsed * tpu));
 
     const deadlineCustomerFormatted = formatDateToMySQL(deadline_customer);
 
@@ -117,6 +142,7 @@ export const createJobController = async (req, res) => {
       material_id:        material_id      || null,
       operation_id,
       material_used:      material_used    || null,
+      processing_time,
       deadline_customer:  deadlineCustomerFormatted,
       deadline_is_manual: !!deadlineCustomerFormatted,
       deadline:           deadlineCustomerFormatted,
@@ -153,6 +179,25 @@ export const updateJobController = async (req, res) => {
       deadline_customer, job_status,
       is_urgent, priority_override,
     } = req.body;
+
+    const finalMaterialId   = material_id  ?? job.material_id;
+    const finalMaterialUsed = material_used ?? job.material_used;
+
+    if (finalMaterialId && finalMaterialUsed) {
+      const material = await db('materials').where({ id: finalMaterialId }).first();
+      if (material) {
+        const reserved  = await getReservedStock(finalMaterialId, req.params.id);
+        const available = material.current_stock - reserved;
+
+        if (available < finalMaterialUsed) {
+          return res.status(400).json({
+            success:           false,
+            stockInsufficient: true,
+            message: `Stok ${material.material_name} tidak cukup untuk update. Stok fisik: ${material.current_stock}, direservasi job lain: ${reserved}, tersedia: ${available}, dibutuhkan: ${finalMaterialUsed}.`,
+          });
+        }
+      }
+    }
 
     let recalcProcessingTime = processing_time;
     if (!recalcProcessingTime && (operation_id || material_used !== undefined)) {

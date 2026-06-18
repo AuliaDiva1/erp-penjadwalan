@@ -23,13 +23,70 @@ const ROW_HEIGHT  = 56;
 const LABEL_WIDTH = 140;
 const RULER_H     = 48;
 
+const DEFAULT_WORK_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+const DEFAULT_CALENDAR  = { work_start: '08:00', work_end: '17:00', work_days: DEFAULT_WORK_DAYS, holidays: [] };
+
 const toWIB = (str) => {
   if (!str) return null;
   const s = str.includes('T') ? str : str.replace(' ', 'T') + '+07:00';
   return new Date(s);
 };
 
-const fmt = (date, opts) => date ? date.toLocaleString('id-ID', opts) : '-';
+// paksa timeZone Asia/Jakarta — tanpa ini jam bisa kegeser ikut timezone device
+const fmt = (date, opts) => date ? date.toLocaleString('id-ID', { ...opts, timeZone: 'Asia/Jakarta' }) : '-';
+
+const getRealDuration = (job) => {
+  const val = job.duration ?? job.predicted_duration ?? job.processing_time;
+  return (val !== undefined && val !== null) ? `${Math.round(val)} menit` : '-';
+};
+
+// FIX UTAMA: pecah rentang [startDt, endDt] jadi potongan-potongan jam kerja saja.
+// Tanpa ini, bar Gantt digambar satu kotak solid dari start ke end mentah,
+// jadi job yang kepotong jam tutup (16:19 → besok 08:16) kelihatan nyambung
+// terus tanpa putus, seolah kerja semalaman.
+function getWorkSegments(startDt, endDt, calendar) {
+  if (!startDt || !endDt || endDt <= startDt) return [];
+
+  const { work_start = '08:00', work_end = '17:00', work_days = DEFAULT_WORK_DAYS, holidays = [] } = calendar || {};
+  const [wsH, wsM] = work_start.split(':').map(Number);
+  const [weH, weM] = work_end.split(':').map(Number);
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  // Semua perhitungan jam pakai komponen WIB asli (bukan timezone browser),
+  // dengan cara menggeser +7 jam lalu baca komponen UTC — jadi aman di device manapun.
+  const wibParts = (d) => {
+    const w = new Date(d.getTime() + 7 * 3600 * 1000);
+    return { y: w.getUTCFullYear(), m: w.getUTCMonth(), d: w.getUTCDate(), dow: w.getUTCDay() };
+  };
+  const wibToUTC = (y, m, d, h, mi) => new Date(Date.UTC(y, m, d, h, mi) - 7 * 3600 * 1000);
+  const incDay = (p) => {
+    const t = new Date(Date.UTC(p.y, p.m, p.d) + 24 * 3600 * 1000);
+    return { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate(), dow: t.getUTCDay() };
+  };
+
+  const segments = [];
+  let p = wibParts(startDt);
+
+  for (let i = 0; i < 60; i++) {
+    const dayStart = wibToUTC(p.y, p.m, p.d, wsH, wsM);
+    if (dayStart.getTime() > endDt.getTime()) break;
+
+    const dayEnd    = wibToUTC(p.y, p.m, p.d, weH, weM);
+    const dateStr   = `${p.y}-${String(p.m + 1).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
+    const isWorkday = work_days.includes(dayNames[p.dow]) && !holidays.includes(dateStr);
+
+    if (isWorkday) {
+      const segStart = startDt > dayStart ? startDt : dayStart;
+      const segEnd   = endDt   < dayEnd   ? endDt   : dayEnd;
+      if (segStart < segEnd) segments.push([segStart, segEnd]);
+    }
+
+    p = incDay(p);
+  }
+
+  // fallback: kalau gagal hitung segmen (kalender kosong dll), tampil utuh seperti dulu
+  return segments.length ? segments : [[startDt, endDt]];
+}
 
 export default function GanttChartPage() {
   const toast     = useRef(null);
@@ -44,12 +101,42 @@ export default function GanttChartPage() {
   const [now,              setNow]              = useState(new Date());
   const [zoom,             setZoom]             = useState(8);
   const [filterDate,       setFilterDate]       = useState(new Date());
+  const [calendar,         setCalendar]         = useState(DEFAULT_CALENDAR);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
   useEffect(() => {
     const iv = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(iv);
+  }, []);
+
+  // Ambil konfigurasi kalender kerja (jam kerja, hari kerja) dari BE,
+  // dipakai buat motong bar Gantt di jam non-kerja.
+  useEffect(() => {
+    const fetchCalendar = async () => {
+      try {
+        const res  = await fetch(`${BASE_URL}/work-calendar`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        const data = await res.json();
+        if (data?.success && data.data) {
+          const cal       = data.data.calendar   || {};
+          const workDays  = (data.data.work_days || [])
+            .filter(d => d.is_workday)
+            .map(d => d.day_name);
+
+          setCalendar({
+            work_start: String(cal.work_start || '08:00:00').slice(0, 5),
+            work_end:   String(cal.work_end   || '17:00:00').slice(0, 5),
+            work_days:  workDays.length ? workDays : DEFAULT_WORK_DAYS,
+            holidays:   [],
+          });
+        }
+      } catch {
+        // gagal ambil kalender — pakai default Senin-Jumat 08:00-17:00
+      }
+    };
+    fetchCalendar();
   }, []);
 
   const fetchJobsBySchedule = async (schedule) => {
@@ -155,7 +242,6 @@ export default function GanttChartPage() {
     revised: { label: 'Revised', severity: 'warning'   },
   };
 
-  // Fungsi memicu printer browser
   const handlePrint = () => {
     window.print();
   };
@@ -228,48 +314,60 @@ export default function GanttChartPage() {
     );
   };
 
+  // FIX: render per-job sekarang dipecah jadi beberapa segmen jam kerja (getWorkSegments),
+  // bukan satu kotak solid dari start ke end mentah — supaya ada GAP kosong yang
+  // kelihatan saat job kepotong jam tutup (mis. 16:19 hari ini → 08:00 besok).
   const renderBars = (machineId) =>
-    filteredJobs.filter(j => j._machineId === machineId).map(job => {
-      if (!job._start || !job._end) return null;
-      const left    = ((job._start.getTime() - minTime) / 60000) * zoom;
-      const width   = Math.max(((job._end.getTime() - job._start.getTime()) / 60000) * zoom, 24);
-      const color   = jobStatusColor[job.job_status] || getColor(job.job_id);
-      const isWarn  = job._dl && job._end > job._dl;
-      const isHov   = hoveredJob === job.job_id;
+    filteredJobs.filter(j => j._machineId === machineId).flatMap(job => {
+      if (!job._start || !job._end) return [];
 
-      return (
-        <div
-          key={job.job_id}
-          style={{
-            position: 'absolute', left, width, top: 8, bottom: 8,
-            background:   color,
-            borderRadius: 8,
-            border:       isWarn ? '2px solid #dc2626' : isHov ? '2px solid rgba(255,255,255,0.8)' : '2px solid transparent',
-            boxShadow:    isHov ? `0 2px 12px rgba(0,0,0,0.2)` : '0 1px 3px rgba(0,0,0,0.12)',
-            transition:   'all 0.12s',
-            zIndex:       isHov ? 10 : 2,
-            cursor:       'pointer',
-            display:      'flex',
-            alignItems:   'center',
-            overflow:     'hidden',
-          }}
-          onMouseEnter={(e) => { setHoveredJob(job.job_id); setTooltip({ visible: true, x: e.clientX, y: e.clientY, job }); }}
-          onMouseMove={(e)  => setTooltip(p => ({ ...p, x: e.clientX, y: e.clientY }))}
-          onMouseLeave={()  => { setHoveredJob(null); setTooltip({ visible: false, x: 0, y: 0, job: null }); }}
-        >
-          {width > 50 && (
-            <span style={{
-              color: 'white', fontWeight: 700, fontSize: '0.68rem',
-              padding: '0 8px', whiteSpace: 'nowrap',
-              overflow: 'hidden', textOverflow: 'ellipsis',
-              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
-            }}>
-              {job.job_id} · {job.operation_type}
-            </span>
-          )}
-          {isWarn && <span style={{ position: 'absolute', right: 4, fontSize: '0.7rem' }}>⚠️</span>}
-        </div>
-      );
+      const segments = getWorkSegments(job._start, job._end, calendar);
+      if (segments.length === 0) return [];
+
+      const color  = jobStatusColor[job.job_status] || getColor(job.job_id);
+      const isWarn = job._dl && job._end > job._dl;
+      const isHov  = hoveredJob === job.job_id;
+
+      return segments.map(([segStart, segEnd], idx) => {
+        const left     = ((segStart.getTime() - minTime) / 60000) * zoom;
+        const width    = Math.max(((segEnd.getTime() - segStart.getTime()) / 60000) * zoom, 6);
+        const isFirst  = idx === 0;
+        const isLast   = idx === segments.length - 1;
+
+        return (
+          <div
+            key={`${job.job_id}-${idx}`}
+            style={{
+              position: 'absolute', left, width, top: 8, bottom: 8,
+              background:   color,
+              borderRadius: 8,
+              border:       isWarn ? '2px solid #dc2626' : isHov ? '2px solid rgba(255,255,255,0.8)' : '2px solid transparent',
+              boxShadow:    isHov ? `0 2px 12px rgba(0,0,0,0.2)` : '0 1px 3px rgba(0,0,0,0.12)',
+              transition:   'all 0.12s',
+              zIndex:       isHov ? 10 : 2,
+              cursor:       'pointer',
+              display:      'flex',
+              alignItems:   'center',
+              overflow:     'hidden',
+            }}
+            onMouseEnter={(e) => { setHoveredJob(job.job_id); setTooltip({ visible: true, x: e.clientX, y: e.clientY, job }); }}
+            onMouseMove={(e)  => setTooltip(p => ({ ...p, x: e.clientX, y: e.clientY }))}
+            onMouseLeave={()  => { setHoveredJob(null); setTooltip({ visible: false, x: 0, y: 0, job: null }); }}
+          >
+            {isFirst && width > 50 && (
+              <span style={{
+                color: 'white', fontWeight: 700, fontSize: '0.68rem',
+                padding: '0 8px', whiteSpace: 'nowrap',
+                overflow: 'hidden', textOverflow: 'ellipsis',
+                textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+              }}>
+                {job.job_id} · {job.operation_type}
+              </span>
+            )}
+            {isWarn && isLast && <span style={{ position: 'absolute', right: 4, fontSize: '0.7rem' }}>⚠️</span>}
+          </div>
+        );
+      });
     });
 
   const onMouseDown = (e) => {
@@ -290,7 +388,6 @@ export default function GanttChartPage() {
 
   return (
     <div>
-      {/* INJEKSI STYLE CSS UNTUK PRINT */}
       <style jsx global>{`
         .print-only-container {
           display: none;
@@ -338,9 +435,7 @@ export default function GanttChartPage() {
 
       <Toast ref={toast} />
 
-      {/* ==================== SCREEN INTERFACE (TAMPIL DI WEB) ==================== */}
       <div className="screen-content">
-        {/* TOOLTIP */}
         {tooltip.visible && tooltip.job && (
           <div style={{
             position: 'fixed',
@@ -375,7 +470,7 @@ export default function GanttChartPage() {
               ['Mesin',     tooltip.job._machineName],
               ['Mulai',     fmt(tooltip.job._start, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
               ['Selesai',   fmt(tooltip.job._end,   { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
-              ['Durasi',    tooltip.job._start && tooltip.job._end ? `${Math.round((tooltip.job._end - tooltip.job._start) / 60000)} menit` : '-'],
+              ['Durasi',    getRealDuration(tooltip.job)],
               ['Prioritas', tooltip.job.priority_score?.toFixed(1) || '-'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 4, gap: 12 }}>
@@ -396,7 +491,6 @@ export default function GanttChartPage() {
           </div>
         )}
 
-        {/* HEADER */}
         <div className="flex justify-content-between align-items-center mb-4">
           <div>
             <h2 className="m-0 mb-1">Gantt Chart Penjadwalan</h2>
@@ -405,7 +499,6 @@ export default function GanttChartPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            {/* Tombol Cetak Baru */}
             <Button 
               label="Cetak Jadwal" 
               icon="pi pi-print" 
@@ -418,10 +511,8 @@ export default function GanttChartPage() {
           </div>
         </div>
 
-        {/* KONTROL */}
         <div className="card mb-3">
           <div className="flex align-items-center gap-3 flex-wrap">
-            {/* STEP 1: Tanggal */}
             <div className="flex align-items-center gap-2">
               <div style={{
                 background: '#6366f1', color: 'white',
@@ -456,7 +547,6 @@ export default function GanttChartPage() {
 
             <i className="pi pi-angle-right text-color-secondary" />
 
-            {/* STEP 2: Jadwal (opsional) */}
             <div className="flex align-items-center gap-2">
               <div style={{
                 background: selectedSchedule ? '#22c55e' : '#94a3b8', color: 'white',
@@ -501,7 +591,6 @@ export default function GanttChartPage() {
               )}
             </div>
 
-            {/* ZOOM */}
             <div className="flex align-items-center gap-2 ml-auto">
               <span className="font-semibold text-sm">Zoom:</span>
               <Dropdown
@@ -514,7 +603,6 @@ export default function GanttChartPage() {
             </div>
           </div>
 
-          {/* INFO HASIL FILTER */}
           <div className="mt-3 pt-3 flex align-items-center gap-3 flex-wrap"
             style={{ borderTop: '1px solid var(--surface-border)' }}>
             <span className="text-sm">
@@ -531,7 +619,6 @@ export default function GanttChartPage() {
           </div>
         </div>
 
-        {/* LEGENDA */}
         <div className="card mb-3 p-3">
           <div className="flex align-items-center gap-3 flex-wrap">
             <span className="font-semibold text-sm">Keterangan:</span>
@@ -557,7 +644,6 @@ export default function GanttChartPage() {
           </div>
         </div>
 
-        {/* GANTT */}
         <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: 10 }}>
           {loading ? (
             <div className="flex justify-content-center align-items-center" style={{ height: 200 }}>
@@ -571,7 +657,6 @@ export default function GanttChartPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', userSelect: 'none' }}>
-              {/* LABEL MESIN */}
               <div style={{
                 width: LABEL_WIDTH, flexShrink: 0,
                 borderRight: '2px solid var(--surface-border)',
@@ -595,14 +680,12 @@ export default function GanttChartPage() {
                 ))}
               </div>
 
-              {/* SCROLL AREA */}
               <div
                 ref={scrollRef}
                 style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', cursor: 'grab' }}
                 onMouseDown={onMouseDown}
               >
                 <div style={{ width: Math.max(totalWidth, 600), position: 'relative' }}>
-                  {/* RULER */}
                   <div style={{
                     height: RULER_H, position: 'relative',
                     background: 'var(--surface-ground)',
@@ -611,7 +694,6 @@ export default function GanttChartPage() {
                     {renderRuler()}
                   </div>
 
-                  {/* ROWS */}
                   {machines.map((mid, mi) => (
                     <div key={mid} style={{
                       height: ROW_HEIGHT, position: 'relative',
@@ -641,8 +723,6 @@ export default function GanttChartPage() {
         </div>
       </div>
 
-
-      {/* ==================== PRINT ONLY STRUCTURE (STRUKTUR TAMPILAN CETAK) ==================== */}
       <div className="print-only-container">
         <div style={{ marginBottom: '20px', borderBottom: '2px solid #334155', paddingBottom: '10px' }}>
           <h1 style={{ margin: '0 0 5px 0', fontSize: '20px' }}>Laporan Hasil Jadwal Kerja </h1>
@@ -668,7 +748,7 @@ export default function GanttChartPage() {
           </thead>
           <tbody>
             {filteredJobs.map((job) => {
-              const duration = job._start && job._end ? `${Math.round((job._end - job._start) / 60000)} menit` : '-';
+              const duration = getRealDuration(job);
               const isOverDeadline = job._dl && job._end > job._dl;
               const statusBg = jobStatusColor[job.job_status] || '#6366f1';
               

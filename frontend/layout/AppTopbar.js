@@ -23,10 +23,37 @@ const AppTopbar = forwardRef((props, ref) => {
     const notifOverlayRef   = useRef(null);
     const router = useRouter();
 
-    const [userData,     setUserData]     = useState({ name: "User", role: "Guest", email: "" });
-    const [procurements, setProcurements] = useState([]);
-    const [userRole,     setUserRole]     = useState(null);
+    const [userData,      setUserData]      = useState({ name: "User", role: "Guest", email: "" });
+    const [procurements,  setProcurements]  = useState([]);
+    const [userRole,      setUserRole]      = useState(null);
+    const [waktuSekarang, setWaktuSekarang] = useState(null);
     const toastRef = useRef(null);
+
+    // ── Clock real-time ───────────────────────────────
+    useEffect(() => {
+        setWaktuSekarang(new Date());
+        const interval = setInterval(() => setWaktuSekarang(new Date()), 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const formatTanggal = (date) => {
+        if (!date) return '';
+        return date.toLocaleDateString('id-ID', {
+            weekday: 'long',
+            day:     '2-digit',
+            month:   'long',
+            year:    'numeric',
+        });
+    };
+
+    const formatJam = (date) => {
+        if (!date) return '';
+        return date.toLocaleTimeString('id-ID', {
+            hour:   '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        });
+    };
 
     useEffect(() => {
         if (typeof window !== "undefined") {
@@ -119,6 +146,18 @@ const AppTopbar = forwardRef((props, ref) => {
                     "layout-topbar-menu-mobile-active": layoutState.profileSidebarVisible,
                 })}
             >
+                {/* Info Hari & Jam — semua role */}
+                {waktuSekarang && (
+                    <div className="hidden md:flex flex-column align-items-end mr-2" style={{ lineHeight: 1.4 }}>
+                        <span className="font-semibold text-900" style={{ fontSize: '0.9rem' }}>
+                            {formatTanggal(waktuSekarang)}
+                        </span>
+                        <span className="text-color-secondary" style={{ fontSize: '0.8rem' }}>
+                            {formatJam(waktuSekarang)}
+                        </span>
+                    </div>
+                )}
+
                 {/* Bell — hanya untuk STAFF_GUDANG */}
                 {userRole === "STAFF_GUDANG" && (
                     <div style={{ position: 'relative', display: 'inline-flex' }}>
@@ -133,24 +172,24 @@ const AppTopbar = forwardRef((props, ref) => {
                         {totalCount > 0 && (
                             <span
                                 style={{
-                                    position: 'absolute',
-                                    top: '6px',
-                                    right: '6px',
-                                    background: pendingCount > 0 ? '#ef4444' : '#f59e0b',
-                                    color: '#fff',
-                                    borderRadius: '50%',
-                                    minWidth: '18px',
-                                    height: '18px',
-                                    fontSize: '0.65rem',
-                                    fontWeight: 700,
-                                    display: 'flex',
-                                    alignItems: 'center',
+                                    position:       'absolute',
+                                    top:            '6px',
+                                    right:          '6px',
+                                    background:     pendingCount > 0 ? '#ef4444' : '#f59e0b',
+                                    color:          '#fff',
+                                    borderRadius:   '50%',
+                                    minWidth:       '18px',
+                                    height:         '18px',
+                                    fontSize:       '0.65rem',
+                                    fontWeight:     700,
+                                    display:        'flex',
+                                    alignItems:     'center',
                                     justifyContent: 'center',
-                                    lineHeight: 1,
-                                    padding: '0 3px',
-                                    pointerEvents: 'none',
-                                    zIndex: 10,
-                                    boxShadow: '0 0 0 2px var(--surface-card)',
+                                    lineHeight:     1,
+                                    padding:        '0 3px',
+                                    pointerEvents:  'none',
+                                    zIndex:         10,
+                                    boxShadow:      '0 0 0 2px var(--surface-card)',
                                 }}
                             >
                                 {totalCount > 99 ? '99+' : totalCount}
@@ -182,12 +221,12 @@ const AppTopbar = forwardRef((props, ref) => {
                         {totalCount > 0 && (
                             <span
                                 style={{
-                                    background: pendingCount > 0 ? '#ef4444' : '#f59e0b',
-                                    color: '#fff',
+                                    background:   pendingCount > 0 ? '#ef4444' : '#f59e0b',
+                                    color:        '#fff',
                                     borderRadius: '10px',
-                                    padding: '1px 7px',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 700,
+                                    padding:      '1px 7px',
+                                    fontSize:     '0.7rem',
+                                    fontWeight:   700,
                                 }}
                             >
                                 {totalCount}
@@ -215,7 +254,7 @@ const AppTopbar = forwardRef((props, ref) => {
                                 className="flex align-items-start gap-3 px-3 py-3"
                                 style={{
                                     borderBottom: i < procurements.length - 1 ? '1px solid var(--surface-border)' : 'none',
-                                    background: p.status === 'pending' ? 'var(--surface-ground)' : 'transparent',
+                                    background:   p.status === 'pending' ? 'var(--surface-ground)' : 'transparent',
                                 }}
                             >
                                 <div

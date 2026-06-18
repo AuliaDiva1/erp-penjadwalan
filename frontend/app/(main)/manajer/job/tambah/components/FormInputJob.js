@@ -34,6 +34,7 @@ const FormInputJob = () => {
   const [bahanBakuOptions, setBahanBakuOptions] = useState([]);
   const [loadingBahan,     setLoadingBahan]     = useState(false);
   const [stockWarning,     setStockWarning]     = useState(null);
+  const [requiresMaterial, setRequiresMaterial] = useState(false);
 
   const getToken = () => localStorage.getItem('TOKEN');
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
@@ -52,6 +53,7 @@ const FormInputJob = () => {
             max_processing_time: op.max_processing_time,
             base_time:           op.base_time,
             time_per_unit:       op.time_per_unit,
+            requires_material:   op.requires_material,
           })));
         }
       } catch {
@@ -64,13 +66,18 @@ const FormInputJob = () => {
   useEffect(() => {
     if (!form.operation_type) {
       setBahanBakuOptions([]);
+      setRequiresMaterial(false);
       set('material_id', null);
       return;
     }
+    const selectedOp = operationTypes.find(op => op.value === form.operation_type);
+    setRequiresMaterial(selectedOp?.requires_material ?? true);
+
     const fetchBahanBaku = async () => {
       setLoadingBahan(true);
       setBahanBakuOptions([]);
       set('material_id', null);
+      set('material_used', null);
       setStockWarning(null);
       try {
         const res  = await fetch(
@@ -80,7 +87,7 @@ const FormInputJob = () => {
         const data = await res.json();
         if (data.success) {
           setBahanBakuOptions(data.data.map(m => ({
-            label: `${m.kode_bahan_baku} - ${m.material_name} (stok: ${m.current_stock} ${m.nama_satuan})`,
+            label: `${m.kode_bahan_baku} - ${m.material_name} (tersedia: ${m.available_stock} ${m.nama_satuan})`,
             value: m.id,
             data:  m,
           })));
@@ -104,10 +111,13 @@ const FormInputJob = () => {
     set('material_used', null);
     setStockWarning(null);
     const selected = bahanBakuOptions.find(m => m.value === id);
-    if (selected?.data && selected.data.current_stock <= selected.data.min_stock_level) {
-      setStockWarning(
-        `Stok ${selected.data.material_name} hampir habis: ${selected.data.current_stock} ${selected.data.nama_satuan}`
-      );
+    if (selected?.data) {
+      const { available_stock, min_stock_level, material_name, nama_satuan } = selected.data;
+      if (available_stock <= min_stock_level) {
+        setStockWarning(
+          `Stok ${material_name} hampir habis — tersedia: ${available_stock} ${nama_satuan}`
+        );
+      }
     }
   };
 
@@ -115,6 +125,16 @@ const FormInputJob = () => {
     if (!form.operation_type) {
       toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Operation type wajib dipilih' });
       return false;
+    }
+    if (requiresMaterial) {
+      if (!form.material_id) {
+        toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Bahan baku wajib dipilih untuk operasi ini' });
+        return false;
+      }
+      if (!form.material_used || form.material_used <= 0) {
+        toast.current.show({ severity: 'warn', summary: 'Perhatian', detail: 'Jumlah material wajib diisi untuk kalkulasi processing time' });
+        return false;
+      }
     }
     if (maxMaterial && form.material_used > maxMaterial) {
       toast.current.show({
@@ -124,6 +144,20 @@ const FormInputJob = () => {
       });
       return false;
     }
+
+    // validasi available_stock sebelum submit
+    if (form.material_id && form.material_used) {
+      const selected = bahanBakuOptions.find(m => m.value === form.material_id);
+      if (selected?.data && form.material_used > selected.data.available_stock) {
+        toast.current.show({
+          severity: 'warn',
+          summary:  'Stok Tidak Cukup',
+          detail:   `Stok tersedia hanya ${selected.data.available_stock} ${selected.data.nama_satuan}`,
+        });
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -173,10 +207,11 @@ const FormInputJob = () => {
     setForm(defaultForm);
     setBahanBakuOptions([]);
     setStockWarning(null);
+    setRequiresMaterial(false);
   };
 
-  const fieldStyle  = { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' };
-  const labelStyle  = { fontWeight: '600', fontSize: '0.875rem', color: 'var(--text-color)' };
+  const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' };
+  const labelStyle = { fontWeight: '600', fontSize: '0.875rem', color: 'var(--text-color)' };
 
   return (
     <>
@@ -209,7 +244,9 @@ const FormInputJob = () => {
 
           {/* Bahan Baku */}
           <div style={fieldStyle}>
-            <label style={labelStyle}>Bahan Baku</label>
+            <label style={labelStyle}>
+              Bahan Baku {requiresMaterial && <span style={{ color: '#ef4444' }}>*</span>}
+            </label>
             <Dropdown
               value={form.material_id}
               options={bahanBakuOptions}
@@ -231,24 +268,42 @@ const FormInputJob = () => {
 
           {/* Jumlah Material */}
           <div style={fieldStyle}>
-            <label style={labelStyle}>Jumlah Material Digunakan</label>
+            <label style={labelStyle}>
+              Jumlah Material Digunakan {requiresMaterial && <span style={{ color: '#ef4444' }}>*</span>}
+            </label>
             <InputNumber
               value={form.material_used}
               onValueChange={e => set('material_used', e.value)}
               min={0}
-              max={maxMaterial ?? undefined}
+              max={
+                form.material_id
+                  ? Math.min(
+                      maxMaterial ?? Infinity,
+                      bahanBakuOptions.find(m => m.value === form.material_id)?.data?.available_stock ?? Infinity
+                    )
+                  : maxMaterial ?? undefined
+              }
               minFractionDigits={2}
-              placeholder="Opsional"
+              placeholder={requiresMaterial ? 'Wajib diisi' : 'Opsional'}
               disabled={!form.material_id}
               style={{ width: '100%' }}
               inputStyle={{ borderRadius: '10px' }}
             />
-            {maxMaterial && form.material_id && (
-              <small style={{ color: 'var(--text-color-secondary)' }}>
-                Maks <strong>{maxMaterial} unit</strong> untuk operasi ini
-                (estimasi waktu maks {selectedOpType?.max_processing_time} menit)
-              </small>
-            )}
+            {form.material_id && (() => {
+              const selected      = bahanBakuOptions.find(m => m.value === form.material_id);
+              const availableStock = selected?.data?.available_stock;
+              const effectiveMax  = maxMaterial
+                ? Math.min(maxMaterial, availableStock ?? maxMaterial)
+                : availableStock;
+              return effectiveMax != null ? (
+                <small style={{ color: 'var(--text-color-secondary)' }}>
+                  Maks <strong>{effectiveMax} unit</strong>
+                  {maxMaterial && availableStock != null && availableStock < maxMaterial
+                    ? ' (dibatasi stok tersedia)'
+                    : ` (estimasi waktu maks ${selectedOpType?.max_processing_time} menit)`}
+                </small>
+              ) : null;
+            })()}
           </div>
 
           {/* Prioritas */}

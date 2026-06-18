@@ -165,7 +165,13 @@ export const runPipeline = async (req, res) => {
 
       const scheduledStart = new Date(item.scheduled_start.replace(' ', 'T') + '+07:00');
       const scheduledEnd   = new Date(item.scheduled_end.replace(' ', 'T')   + '+07:00');
-      const makespanJob    = Math.round((scheduledEnd - scheduledStart) / 60000);
+
+      // FIX: makespanJob HARUS pakai durasi kerja asli (processing_time / item.duration),
+      // BUKAN selisih scheduledEnd - scheduledStart mentah.
+      // Selisih mentah ikut menghitung jam non-kerja (di luar 08:00-17:00, weekend, libur)
+      // kalau job-nya kepotong jam tutup — makanya job 57 menit bisa kelihatan 957 menit.
+      const durasiKerjaAsli = item.duration ?? item.predicted_duration ?? jobRow.processing_time;
+      const makespanJob     = Math.round(Number(durasiKerjaAsli));
 
       let deadlinePredicted;
       if (item.deadline_predicted) {

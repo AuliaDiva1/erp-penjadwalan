@@ -23,9 +23,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_API     = os.getenv("DB_API", "")
-FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
-DB_TIMEOUT = 5
+DB_API          = os.getenv("DB_API", "")
+FLASK_PORT      = int(os.getenv("FLASK_PORT", 5000))
+DB_TIMEOUT      = 5
+HOLIDAY_API     = os.getenv("HOLIDAY_API", "https://api-hari-libur.vercel.app/api")
+HOLIDAY_TIMEOUT = 5
 
 
 class PipelineInputError(ValueError):
@@ -77,6 +79,9 @@ def internal_error(e):
 _ccea_config_cache: dict | None = None
 _ccea_config_lock  = threading.Lock()
 
+_holiday_cache: dict[str, list[str]] = {}
+_holiday_cache_lock = threading.Lock()
+
 
 def load_ccea_config(token: str | None = None, force_reload: bool = False) -> dict | None:
     global _ccea_config_cache
@@ -106,6 +111,119 @@ def load_ccea_config(token: str | None = None, force_reload: bool = False) -> di
         return data
     except requests.RequestException as exc:
         logger.warning("[CCEA] Gagal load config dari DB (%s), pakai default.", exc)
+        return None
+
+
+def fetch_holidays(year: int, month: int) -> list[str]:
+    """
+    Ambil daftar tanggal libur nasional untuk bulan/tahun tertentu
+    dari API api-hari-libur. Hasil di-cache per bulan-tahun.
+    Return list tanggal format 'YYYY-MM-DD'.
+    """
+    cache_key = f"{year}-{month:02d}"
+
+    with _holiday_cache_lock:
+        if cache_key in _holiday_cache:
+            return _holiday_cache[cache_key]
+
+    try:
+        res = requests.get(
+            HOLIDAY_API,
+            params={"year": year, "month": month},
+            timeout=HOLIDAY_TIMEOUT,
+        )
+        res.raise_for_status()
+        body = res.json()
+
+        items = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(items, list):
+            logger.warning("[HOLIDAY] Response API tidak valid untuk %s, anggap tidak ada libur.", cache_key)
+            holidays = []
+        else:
+            holidays = [item["date"] for item in items if isinstance(item, dict) and item.get("date")]
+
+        with _holiday_cache_lock:
+            _holiday_cache[cache_key] = holidays
+
+        logger.info("[HOLIDAY] %s → %d hari libur ditemukan", cache_key, len(holidays))
+        return holidays
+
+    except requests.RequestException as exc:
+        logger.warning("[HOLIDAY] Gagal hit API hari libur untuk %s (%s), anggap tidak ada libur.", cache_key, exc)
+        with _holiday_cache_lock:
+            _holiday_cache[cache_key] = []
+        return []
+
+
+def get_holidays_in_range(start_dt: datetime, months_ahead: int = 3) -> list[str]:
+    """
+    Ambil hari libur dari bulan start_dt sampai `months_ahead` bulan ke depan.
+    """
+    all_holidays = []
+    year, month = start_dt.year, start_dt.month
+
+    for _ in range(months_ahead + 1):
+        all_holidays.extend(fetch_holidays(year, month))
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+
+    return sorted(set(all_holidays))
+
+
+def load_work_calendar(token: str | None = None) -> dict | None:
+    if not DB_API:
+        logger.warning("[CALENDAR] DB_API tidak di-set, kalender tidak dipakai.")
+        return None
+
+    try:
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+        # Hit dua endpoint sekaligus
+        res_cal = requests.get(f"{DB_API}/work-calendar",        headers=headers, timeout=DB_TIMEOUT)
+        res_ot  = requests.get(f"{DB_API}/work-day-overtime",    headers=headers, timeout=DB_TIMEOUT)
+        res_cal.raise_for_status()
+
+        payload        = res_cal.json().get("data")
+        if not isinstance(payload, dict):
+            logger.warning("[CALENDAR] Response work-calendar tidak valid.")
+            return None
+
+        calendar_row   = payload.get("calendar") or {}
+        work_days_rows = payload.get("work_days") or []
+
+        active_days = [d["day_name"] for d in work_days_rows if d.get("is_workday")]
+        work_start  = str(calendar_row.get("work_start", "08:00:00"))[:5]
+        work_end    = str(calendar_row.get("work_end",   "17:00:00"))[:5]
+
+        # Bangun overtime_per_day dari endpoint work-day-overtime
+        overtime_per_day = {}
+        if res_ot.ok:
+            ot_list = res_ot.json().get("data") or []
+            for ot in ot_list:
+                day_name = ot.get("day_name")
+                if not day_name:
+                    continue
+                ot_end_raw = ot.get("overtime_end")
+                overtime_per_day[day_name] = {
+                    "enabled":      bool(ot.get("overtime_enabled", False)),
+                    "overtime_end": str(ot_end_raw)[:5] if ot_end_raw else None,
+                }
+        else:
+            logger.warning("[CALENDAR] Gagal load work-day-overtime, overtime per hari tidak dipakai.")
+
+        kalender = {
+            "work_start":        work_start,
+            "work_end":          work_end,
+            "work_days":         active_days,
+            "overtime_per_day":  overtime_per_day,
+        }
+        logger.info("[CALENDAR] Konfigurasi diterima: %s", kalender)
+        return kalender
+
+    except requests.RequestException as exc:
+        logger.warning("[CALENDAR] Gagal load work-calendar dari BE (%s), kalender tidak dipakai.", exc)
         return None
 
 
@@ -199,7 +317,6 @@ def pipeline_run():
     logger.info("[PIPELINE] Mulai | %d jobs | %d machines", len(jobs), len(machine_ids))
     logger.info("[PIPELINE] machine_busy_until diterima: %s", machine_busy_until_raw)
 
-    # ── Parse busy_until per mesin ───────────────────
     parsed_busy: dict[str, datetime] = {}
     for machine_id in machine_ids:
         busy_str = machine_busy_until_raw.get(machine_id)
@@ -209,9 +326,6 @@ def pipeline_run():
             except ValueError:
                 logger.warning("[PIPELINE] Gagal parse busy_until '%s' mesin %s", busy_str, machine_id)
 
-    # base_time = waktu mesin paling AKHIR selesai (anchor titik 0 CCEA)
-    # Semua job baru tidak bisa start sebelum waktu ini
-    # Kalau tidak ada busy → pakai datetime.now()
     if parsed_busy:
         base_time = max(parsed_busy.values())
         logger.info("[PIPELINE] base_time (anchor) = %s", _fmt_local(base_time))
@@ -219,22 +333,26 @@ def pipeline_run():
         base_time = datetime.now()
         logger.info("[PIPELINE] base_time = now (%s), tidak ada mesin busy", _fmt_local(base_time))
 
-    # machine_ready_offset = selisih menit dari base_time per mesin
-    # Mesin yang selesai sebelum anchor → offset 0 (sudah free)
-    # Mesin yang tidak ada di busy_until → offset 0 (langsung free dari base_time)
-    machine_ready_offset: dict[str, float] = {}
+    kalender = load_work_calendar(token)
+
+    if kalender:
+        holidays = get_holidays_in_range(base_time, months_ahead=3)
+        kalender["holidays"] = holidays
+        logger.info("[PIPELINE] Kalender aktif: %s | %d hari libur dimuat", kalender, len(holidays))
+    else:
+        logger.warning("[PIPELINE] Kalender tidak tersedia, CCEA jalan TANPA skip hari libur/jam kerja.")
+
+    machine_ready_offset: dict[str, str] = {}
     for machine_id in machine_ids:
         if machine_id in parsed_busy:
-            offset = (parsed_busy[machine_id] - base_time).total_seconds() / 60.0
-            machine_ready_offset[machine_id] = max(0.0, offset)
+            machine_ready_offset[machine_id] = _fmt_local(parsed_busy[machine_id])
         else:
-            machine_ready_offset[machine_id] = 0.0
+            machine_ready_offset[machine_id] = _fmt_local(base_time)
         logger.info(
-            "[PIPELINE] Mesin %s → ready offset: %.1f menit",
+            "[PIPELINE] Mesin %s → ready at: %s",
             machine_id, machine_ready_offset[machine_id],
         )
 
-    # ── STEP 1: Hitung Deadline ──────────────────────
     logger.info("[STEP 1] Rule-Based — Hitung Deadline")
     deadline_results: dict[str, dict] = {}
     for job in jobs:
@@ -245,7 +363,6 @@ def pipeline_run():
             logger.warning("[STEP 1] Job '%s' dilewati: %s", job_id, exc)
             deadline_results[job_id] = {}
 
-    # ── STEP 2: Fuzzy Mamdani ────────────────────────
     logger.info("[STEP 2] Fuzzy Mamdani — Hitung Prioritas")
     fuzzy_input = [
         {
@@ -271,7 +388,6 @@ def pipeline_run():
 
     fuzzy_map = {r["job_id"]: r for r in fuzzy_list}
 
-    # ── STEP 3: CCEA ─────────────────────────────────
     logger.info("[STEP 3] CCEA — Optimasi Penjadwalan")
     ccea_config = load_ccea_config(token)
 
@@ -289,34 +405,37 @@ def pipeline_run():
     )
 
     try:
-        ccea_result = run_ccea(ccea_jobs, machine_ids, ccea_config, machine_ready_offset)
+        ccea_result = run_ccea(
+            ccea_jobs,
+            machine_ids,
+            ccea_config,
+            machine_ready_offset=machine_ready_offset,
+            kalender=kalender,
+            pipeline_start=_fmt_local(base_time),
+        )
     except (CCEAInputError, CCEAConfigError) as exc:
         return jsonify({"success": False, "message": f"CCEA error: {exc}"}), 400
 
-    # ── STEP 4: Gabungkan Hasil ───────────────────────
     logger.info("[STEP 4] Menggabungkan hasil...")
 
     final_schedule = []
     for item in ccea_result["schedule"]:
-        # start_time dan end_time dari CCEA adalah offset menit dari base_time
-        scheduled_start_dt = base_time + timedelta(minutes=item["start_time"])
-        scheduled_end_dt   = base_time + timedelta(minutes=item["end_time"])
-
-        deadline_predicted = _fmt_local(scheduled_end_dt)
+        job_id              = item["job_id"]
+        scheduled_start_str = item["scheduled_start"]
+        scheduled_end_str   = item["scheduled_end"]
+        duration            = item.get("duration_menit", item.get("duration"))
 
         final_schedule.append({
-            "job_id":              item["job_id"],
-            "assigned_machine_id": item["machine_id"],
-            "scheduled_start":     _fmt_local(scheduled_start_dt),
-            "scheduled_end":       _fmt_local(scheduled_end_dt),
-            "duration":            item["duration"],
-            "start_offset_menit":  item["start_time"],
-            "end_offset_menit":    item["end_time"],
-            "deadline_predicted":  deadline_predicted,
-            "predicted_duration":  item["duration"],
-            "skor_prioritas":      fuzzy_map.get(item["job_id"], {}).get("skor_final", 0),
-            "skor_crisp":          fuzzy_map.get(item["job_id"], {}).get("skor_crisp", 0),
-            "bobot_operation":     fuzzy_map.get(item["job_id"], {}).get("bobot", 1.0),
+            "job_id":              job_id,
+            "assigned_machine_id": item["assigned_machine_id"],
+            "scheduled_start":     scheduled_start_str,
+            "scheduled_end":       scheduled_end_str,
+            "duration":            duration,
+            "deadline_predicted":  scheduled_end_str,
+            "predicted_duration":  duration,
+            "skor_prioritas":      fuzzy_map.get(job_id, {}).get("skor_final", 0),
+            "skor_crisp":          fuzzy_map.get(job_id, {}).get("skor_crisp", 0),
+            "bobot_operation":     fuzzy_map.get(job_id, {}).get("bobot", 1.0),
         })
 
     logger.info(
@@ -331,12 +450,14 @@ def pipeline_run():
         "total_machines": len(machine_ids),
         "schedule":       final_schedule,
         "summary": {
-            "fuzzy_rules":   27,
-            "ccea_generasi": ccea_result.get("generasi"),
-            "ccea_cache":    ccea_result.get("cache_stats"),
-            "ccea_config":   ccea_config,
-            "base_time":     _fmt_local(base_time),
-            "generated_at":  _fmt_local(datetime.now()),
+            "fuzzy_rules":    27,
+            "ccea_generasi":  ccea_result.get("generasi"),
+            "ccea_cache":     ccea_result.get("cache_stats"),
+            "ccea_config":    ccea_config,
+            "kalender_aktif": kalender is not None,
+            "kalender":       kalender,
+            "base_time":      _fmt_local(base_time),
+            "generated_at":   _fmt_local(datetime.now()),
         },
     })
 
@@ -372,6 +493,7 @@ if __name__ == "__main__":
     logger.info("FLASK SERVICE RUNNING")
     logger.info("Port  : %d", FLASK_PORT)
     logger.info("DB API: %s", DB_API or "(tidak di-set)")
+    logger.info("Holiday API: %s", HOLIDAY_API)
     logger.info("Pipeline: Fuzzy Mamdani + CCEA")
     logger.info("=" * 50)
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)

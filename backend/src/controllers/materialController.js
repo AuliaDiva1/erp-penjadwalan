@@ -11,13 +11,35 @@ import {
 } from '../models/materialModel.js';
 import { getOperationTypeById }                         from '../models/operationTypeModel.js';
 import { createAutoProcurement, hasPendingProcurement } from '../models/procurementModel.js';
+import { db }                                           from '../core/config/knex.js';
 
-// ← tambah destructure operation_type_id dari query
+const getReservedStock = async (material_id) => {
+  const result = await db('jobs')
+    .where({ material_id })
+    .whereIn('job_status', ['Pending', 'Scheduled', 'In Progress'])
+    .whereNotNull('material_used')
+    .sum('material_used as total')
+    .first();
+  return Number(result?.total) || 0;
+};
+
 export const getAllMaterialsController = async (req, res) => {
   try {
     const { operation_type_id } = req.query;
     const materials = await getAllMaterials({ operation_type_id });
-    res.json({ success: true, data: materials });
+
+    const withAvailable = await Promise.all(
+      materials.map(async (m) => {
+        const reserved = await getReservedStock(m.id);
+        return {
+          ...m,
+          reserved_stock:  reserved,
+          available_stock: Math.max(0, m.current_stock - reserved),
+        };
+      })
+    );
+
+    res.json({ success: true, data: withAvailable });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -28,7 +50,16 @@ export const getMaterialByIdController = async (req, res) => {
     const material = await getMaterialById(req.params.id);
     if (!material)
       return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
-    res.json({ success: true, data: material });
+
+    const reserved = await getReservedStock(material.id);
+    res.json({
+      success: true,
+      data: {
+        ...material,
+        reserved_stock:  reserved,
+        available_stock: Math.max(0, material.current_stock - reserved),
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -144,8 +175,9 @@ export const updateStockController = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Jumlah stok tidak valid' });
 
     await updateStock(req.params.id, current_stock);
-    const updated = await getMaterialById(req.params.id);
-    const isLow   = updated.current_stock <= updated.min_stock_level;
+    const updated  = await getMaterialById(req.params.id);
+    const reserved = await getReservedStock(req.params.id);
+    const isLow    = updated.current_stock <= updated.min_stock_level;
 
     let autoProcurement = null;
     if (isLow) {
@@ -161,7 +193,11 @@ export const updateStockController = async (req, res) => {
     res.json({
       success:          true,
       message:          'Stok berhasil diperbarui',
-      data:             updated,
+      data: {
+        ...updated,
+        reserved_stock:  reserved,
+        available_stock: Math.max(0, updated.current_stock - reserved),
+      },
       warning:          isLow           ? `Stok ${updated.material_name} di bawah batas minimum!` : null,
       auto_procurement: autoProcurement ? 'Pengadaan otomatis dibuat' : null,
     });

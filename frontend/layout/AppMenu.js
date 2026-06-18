@@ -33,11 +33,12 @@ const AppMenu = () => {
       {
         label: "MASTER DATA",
         items: [
-          { label: "Data Pengguna", icon: "pi pi-fw pi-users",  to: "/admin/pengguna"  },
-          { label: "Data Mesin",    icon: "pi pi-fw pi-server", to: "/admin/mesin"     },
-          { label: "Operational Type",    icon: "pi pi-fw pi-box",    to: "/admin/operation-types" },
-          { label: "Bahan Baku",    icon: "pi pi-fw pi-box",    to: "/admin/materials" },
-          { label: "Satuan",        icon: "pi pi-fw pi-tag",    to: "/admin/satuan"    },
+          { label: "Data Pengguna",      icon: "pi pi-fw pi-users",    to: "/admin/pengguna"        },
+          { label: "Data Mesin",         icon: "pi pi-fw pi-server",   to: "/admin/mesin"           },
+          { label: "Operational Type",   icon: "pi pi-fw pi-box",      to: "/admin/operation-types" },
+          { label: "Bahan Baku",         icon: "pi pi-fw pi-box",      to: "/admin/materials"       },
+          { label: "Satuan",             icon: "pi pi-fw pi-tag",      to: "/admin/satuan"          },
+          { label: "Kalender Produksi",  icon: "pi pi-fw pi-calendar", to: "/admin/work-calendar"   },
         ],
       },
       {
@@ -51,8 +52,8 @@ const AppMenu = () => {
               { label: "Bobot Operation Type", icon: "pi pi-fw pi-percentage", to: "/admin/konfigurasi/fuzzy/bobot"     },
             ],
           },
-          { label: "Parameter CCEA",      icon: "pi pi-fw pi-chart-line", to: "/admin/konfigurasi/ccea"  },
-          { label: "Model", icon: "pi pi-fw pi-cog",        to: "/admin/konfigurasi/model" },
+          { label: "Parameter CCEA", icon: "pi pi-fw pi-chart-line", to: "/admin/konfigurasi/ccea"  },
+          { label: "Model",          icon: "pi pi-fw pi-cog",        to: "/admin/konfigurasi/model" },
         ],
       },
       {
@@ -91,7 +92,7 @@ const AppMenu = () => {
             label: "Job Order",
             icon: "pi pi-fw pi-file-edit",
             items: [
-              { label: "Input Job Baru",  icon: "pi pi-fw pi-plus", to: "/manajer/job/tambah" },
+              { label: "Input Job Baru",  icon: "pi pi-fw pi-plus", to: "/manajer/job/tambah"  },
               { label: "Riwayat Pesanan", icon: "pi pi-fw pi-list", to: "/manajer/job/riwayat" },
             ],
           },
@@ -144,8 +145,8 @@ const AppMenu = () => {
       {
         label: "PENGADAAN",
         items: [
-          { label: "Notifikasi Pengadaan", icon: "pi pi-fw pi-bell",         to: "/gudang/pengadaan/notifikasi" },
-          { label: "Riwayat Pengadaan",    icon: "pi pi-fw pi-history",      to: "/gudang/pengadaan/riwayat"    },
+          { label: "Notifikasi Pengadaan", icon: "pi pi-fw pi-bell",    to: "/gudang/pengadaan/notifikasi" },
+          { label: "Riwayat Pengadaan",    icon: "pi pi-fw pi-history", to: "/gudang/pengadaan/riwayat"    },
         ],
       },
       {

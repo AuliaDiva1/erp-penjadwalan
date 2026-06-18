@@ -20,7 +20,8 @@ import konfigurasiCCEARoutes  from './routes/konfigurasiCCEARoutes.js';
 import pipelineRoutes from './routes/pipelineRoutes.js';
 import operationTypeRoutes from './routes/operationTypeRoutes.js';
 import operationMaterialRoutes from './routes/operationMaterialRoutes.js';
-
+import workCalendarRoutes from './routes/workCalendarRoutes.js';
+import workDayOvertimeRoutes from './routes/workDayOvertimeRoutes.js';
 
 const app = express();
 
@@ -57,6 +58,8 @@ app.use('/api/konfigurasi/ccea',  konfigurasiCCEARoutes);
 app.use('/api/pipeline', pipelineRoutes);
 app.use('/api/operation-types', operationTypeRoutes);
 app.use('/api/operation-materials', operationMaterialRoutes);
+app.use('/api/work-calendar', workCalendarRoutes);
+app.use('/api/work-day-overtime', workDayOvertimeRoutes);
 
 
 export default app;
