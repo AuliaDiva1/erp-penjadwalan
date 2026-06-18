@@ -163,7 +163,6 @@ export const createJobController = async (req, res) => {
     return error(res, 'Gagal menambahkan job');
   }
 };
-
 export const updateJobController = async (req, res) => {
   try {
     const job = await Model.getJobById(req.params.id);
@@ -179,6 +178,17 @@ export const updateJobController = async (req, res) => {
       deadline_customer, job_status,
       is_urgent, priority_override,
     } = req.body;
+
+    // Validasi range energy_consumption
+    if (energy_consumption !== undefined && energy_consumption !== null) {
+      const ec = Number(energy_consumption);
+      if (isNaN(ec) || ec < 2.01 || ec > 14.98) {
+        return res.status(400).json({
+          success: false,
+          message: 'energy_consumption harus dalam rentang 2.01 – 14.98 kWh sesuai domain sistem',
+        });
+      }
+    }
 
     const finalMaterialId   = material_id  ?? job.material_id;
     const finalMaterialUsed = material_used ?? job.material_used;
