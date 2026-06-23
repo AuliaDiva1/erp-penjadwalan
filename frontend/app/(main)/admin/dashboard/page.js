@@ -25,23 +25,33 @@ const ACTION_CONFIG = {
   READ:   'secondary',
 };
 
+const card = {
+  borderRadius: 12,
+  border: '1px solid var(--surface-200)',
+  background: 'var(--surface-card)',
+  padding: '1.25rem',
+};
+
 const SectionTitle = ({ children }) => (
-  <p className="text-xs font-semibold text-color-secondary mb-2"
-    style={{ textTransform: 'uppercase', letterSpacing: '.06em' }}>
+  <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-color-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
     {children}
   </p>
 );
 
+const Divider = () => (
+  <div style={{ height: 1, background: 'var(--surface-200)', margin: '0.6rem 0' }} />
+);
+
 const EmptyState = ({ icon, text }) => (
-  <div className="flex flex-column align-items-center justify-content-center gap-2 py-4">
-    <i className={`pi ${icon}`} style={{ fontSize: '1.75rem', color: 'var(--text-color-secondary)' }} />
-    <p className="text-color-secondary text-sm m-0">{text}</p>
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '2rem 0', color: 'var(--text-color-secondary)' }}>
+    <i className={`pi ${icon}`} style={{ fontSize: '1.5rem', opacity: 0.45 }} />
+    <p style={{ margin: 0, fontSize: '0.82rem' }}>{text}</p>
   </div>
 );
 
 const LoadingSpinner = () => (
-  <div className="flex justify-content-center py-4">
-    <i className="pi pi-spin pi-spinner text-color-secondary" />
+  <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 0' }}>
+    <i className="pi pi-spin pi-spinner" style={{ color: 'var(--text-color-secondary)', fontSize: '1.1rem' }} />
   </div>
 );
 
@@ -54,7 +64,6 @@ export default function AdminDashboard() {
   const [inProgressJobs, setInProgressJobs] = useState([]);
   const [logs,           setLogs]           = useState([]);
   const [modulSummary,   setModulSummary]   = useState(null);
-  const [modelRF,        setModelRF]        = useState(null);
   const [loading,        setLoading]        = useState(true);
 
   const getToken = () => localStorage.getItem('TOKEN');
@@ -63,18 +72,17 @@ export default function AdminDashboard() {
     setLoading(true);
     const headers = { Authorization: `Bearer ${getToken()}` };
     try {
-      const [resStats, resStok, resJadwal, resLog, resModul, resModel] = await Promise.all([
+      const [resStats, resStok, resJadwal, resLog, resModul] = await Promise.all([
         fetch(`${BASE_URL}/dashboard/admin/stats`,        { headers }),
         fetch(`${BASE_URL}/dashboard/admin/stok-kritis`,  { headers }),
         fetch(`${BASE_URL}/dashboard/admin/jadwal`,       { headers }),
         fetch(`${BASE_URL}/dashboard/admin/log?limit=10`, { headers }),
         fetch(`${BASE_URL}/dashboard/admin/modul`,        { headers }),
-        fetch(`${BASE_URL}/dashboard/admin/model-rf`,     { headers }),
       ]);
 
-      const [dStats, dStok, dJadwal, dLog, dModul, dModel] = await Promise.all([
+      const [dStats, dStok, dJadwal, dLog, dModul] = await Promise.all([
         resStats.json(), resStok.json(), resJadwal.json(),
-        resLog.json(), resModul.json(), resModel.json(),
+        resLog.json(), resModul.json(),
       ]);
 
       if (dStats.success)  setStats(dStats.data);
@@ -85,7 +93,6 @@ export default function AdminDashboard() {
       }
       if (dLog.success)   setLogs(dLog.data    || []);
       if (dModul.success) setModulSummary(dModul.data);
-      if (dModel.success) setModelRF(dModel.data);
     } catch (err) {
       console.error('fetchAll error:', err);
       toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data dashboard' });
@@ -136,83 +143,47 @@ export default function AdminDashboard() {
     { label: 'Pengadaan Pending', value: modulSummary.pending_pengadaan, icon: 'pi-bell',      color: '#dc2626', bg: '#fee2e2' },
   ] : [];
 
-  const rfRows = modelRF ? [
-    { key: 'Nama Model', val: modelRF.nama_model  || 'Random Forest Regressor' },
-    { key: 'Versi',      val: modelRF.versi        || '-' },
-    { key: 'MAE',        val: modelRF.mae          ? `${modelRF.mae} menit`                    : '-' },
-    { key: 'RMSE',       val: modelRF.rmse         ? `${modelRF.rmse} menit`                   : '-' },
-    { key: 'R²',         val: modelRF.r2_score     ? `${(modelRF.r2_score * 100).toFixed(1)}%` : '-' },
-    { key: 'Status',     val: modelRF.is_active
-        ? <Tag value="Aktif" severity="success" />
-        : <Tag value="Tidak Aktif" severity="secondary" /> },
-    { key: 'Dilatih',    val: formatDate(modelRF.trained_at) },
-  ] : [];
-
   const menuShortcuts = [
-    { label: 'Kelola Pengguna',   icon: 'pi-users',      desc: 'Tambah, edit, dan kelola akun pengguna',      route: '/admin/pengguna',                    color: '#4f46e5', bg: '#eef2ff' },
-    { label: 'Kelola Mesin',      icon: 'pi-server',     desc: 'Manajemen data mesin produksi',                route: '/admin/mesin',                       color: '#0891b2', bg: '#e0f2fe' },
-    { label: 'Kelola Bahan Baku', icon: 'pi-box',        desc: 'Manajemen material dan batas minimum stok',    route: '/admin/materials',                   color: '#059669', bg: '#d1fae5' },
-    { label: 'Fuzzy Mamdani',     icon: 'pi-sliders-h',  desc: 'Atur 27 rules dan bobot operation type',       route: '/admin/konfigurasi/fuzzy/parameter',  color: '#d97706', bg: '#fef3c7' },
-    { label: 'Parameter CCEA',    icon: 'pi-chart-line', desc: 'Atur populasi, iterasi, dan dekomposisi CCEA', route: '/admin/konfigurasi/ccea',             color: '#d97706', bg: '#fef3c7' },
-    { label: 'Model Prediksi RF', icon: 'pi-cog',        desc: 'Pantau dan reset model Random Forest',         route: '/admin/konfigurasi/model',            color: '#7c3aed', bg: '#f5f3ff' },
+    { label: 'Kelola Pengguna',   icon: 'pi-users',      desc: 'Tambah, edit, dan kelola akun pengguna',      route: '/admin/pengguna',                   color: '#4f46e5', bg: '#eef2ff' },
+    { label: 'Kelola Mesin',      icon: 'pi-server',     desc: 'Manajemen data mesin produksi',                route: '/admin/mesin',                      color: '#0891b2', bg: '#e0f2fe' },
+    { label: 'Kelola Bahan Baku', icon: 'pi-box',        desc: 'Manajemen material dan batas minimum stok',    route: '/admin/materials',                  color: '#059669', bg: '#d1fae5' },
+    { label: 'Fuzzy Mamdani',     icon: 'pi-sliders-h',  desc: 'Atur 27 rules dan bobot operation type',       route: '/admin/konfigurasi/fuzzy/parameter', color: '#d97706', bg: '#fef3c7' },
+    { label: 'Parameter CCEA',    icon: 'pi-chart-line', desc: 'Atur populasi, iterasi, dan dekomposisi CCEA', route: '/admin/konfigurasi/ccea',            color: '#7c3aed', bg: '#f5f3ff' },
+    { label: 'Log Aktivitas',     icon: 'pi-history',    desc: 'Pantau semua aktivitas pengguna di sistem',    route: '/admin/monitoring/log',             color: '#0891b2', bg: '#e0f2fe' },
   ];
 
-  const noUrut = (options) => options.rowIndex + 1;
-
-  const cardStyle = {
-    borderRadius: 10,
-    border: '1px solid var(--surface-200)',
-    background: 'var(--surface-card)',
-    padding: '1.25rem',
-  };
+  const noUrut = (_, options) => options.rowIndex + 1;
 
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 0.5rem' }}>
       <Toast ref={toast} />
 
       {/* HEADER */}
-      <div className="flex align-items-center justify-content-between mb-4 pb-3"
-        style={{ borderBottom: '1px solid var(--surface-200)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem', paddingBottom: '1rem', borderBottom: '1px solid var(--surface-200)' }}>
         <div>
-          <h2 className="m-0 mb-1" style={{ fontSize: '1.25rem', fontWeight: 700 }}>Dashboard Admin</h2>
-          <p className="m-0 text-color-secondary text-sm">Panel administrasi ERP Penjadwalan Produksi</p>
+          <h2 style={{ margin: 0, marginBottom: 4, fontSize: '1.2rem', fontWeight: 700 }}>Dashboard Admin</h2>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-color-secondary)' }}>Panel administrasi ERP Penjadwalan Produksi</p>
         </div>
         <Button label="Refresh" icon="pi pi-refresh" outlined size="small" onClick={fetchAll} loading={loading} />
       </div>
 
       {/* STAT CARDS */}
       <SectionTitle>Ringkasan Sistem</SectionTitle>
-      <div className="grid mb-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: '1.75rem' }}>
         {statCards.map((s, i) => (
-          <div key={i} className="col-12 sm:col-6 lg:col-4 xl:col-2">
-            <div
-              onClick={() => router.push(s.route)}
-              className="cursor-pointer"
-              style={{
-                ...cardStyle,
-                borderLeft: `4px solid ${s.color}`,
-                transition: 'box-shadow 0.2s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.10)'}
-              onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
-            >
-              <div className="flex align-items-center justify-content-between mb-2">
-                <p className="text-xs text-color-secondary m-0"
-                  style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>
-                  {s.label}
-                </p>
-                <div style={{
-                  width: 34, height: 34, borderRadius: 8, background: s.bg,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <i className={`pi ${s.icon}`} style={{ fontSize: '0.9rem', color: s.color }} />
-                </div>
+          <div key={i} onClick={() => router.push(s.route)}
+            style={{ ...card, borderLeft: `3px solid ${s.color}`, cursor: 'pointer', transition: 'box-shadow 0.2s, transform 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 18px rgba(0,0,0,0.09)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <p style={{ margin: 0, fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-color-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', lineHeight: 1.3 }}>{s.label}</p>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className={`pi ${s.icon}`} style={{ fontSize: '0.82rem', color: s.color }} />
               </div>
-              <p className="text-3xl font-bold m-0 mb-1" style={{ color: s.color }}>
-                {loading ? '—' : s.value}
-              </p>
-              <p className="text-xs text-color-secondary m-0">{s.sub}</p>
             </div>
+            <p style={{ margin: 0, marginBottom: 3, fontSize: '1.7rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>{loading ? '—' : s.value}</p>
+            <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-color-secondary)' }}>{s.sub}</p>
           </div>
         ))}
       </div>
@@ -221,22 +192,16 @@ export default function AdminDashboard() {
       {stats?.jobs && (
         <>
           <SectionTitle>Status Job Produksi</SectionTitle>
-          <div className="mb-4" style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-            <div className="grid m-0">
+          <div style={{ ...card, padding: 0, overflow: 'hidden', marginBottom: '1.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${jobBarItems.length}, 1fr)` }}>
               {jobBarItems.map((j, i) => (
-                <div
-                  key={i}
-                  className="col text-center py-3 cursor-pointer"
-                  style={{
-                    borderRight: i < jobBarItems.length - 1 ? '1px solid var(--surface-200)' : 'none',
-                    transition: 'background 0.15s',
-                  }}
+                <div key={i} onClick={() => router.push('/admin/monitoring/jadwal')}
+                  style={{ textAlign: 'center', padding: '1rem 0.5rem', borderRight: i < jobBarItems.length - 1 ? '1px solid var(--surface-200)' : 'none', cursor: 'pointer', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-50)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  onClick={() => router.push('/admin/monitoring/jadwal')}
                 >
-                  <p className="text-2xl font-bold m-0 mb-1" style={{ color: j.color }}>{j.value ?? 0}</p>
-                  <p className="text-xs text-color-secondary m-0" style={{ fontWeight: 500 }}>{j.label}</p>
+                  <p style={{ margin: 0, marginBottom: 4, fontSize: '1.5rem', fontWeight: 700, color: j.color, lineHeight: 1 }}>{j.value ?? 0}</p>
+                  <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-color-secondary)', fontWeight: 500 }}>{j.label}</p>
                 </div>
               ))}
             </div>
@@ -244,266 +209,162 @@ export default function AdminDashboard() {
         </>
       )}
 
-      {/* STOK KRITIS & JOB BERJALAN */}
-      <div className="grid mb-4">
-        {/* Stok Kritis */}
-        <div className="col-12 lg:col-6">
-          <div style={cardStyle} className="h-full">
-            <div className="flex justify-content-between align-items-center mb-3">
-              <div className="flex align-items-center gap-2">
-                <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: '1rem' }} />
-                <h4 className="m-0" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Stok Bahan Baku Kritis</h4>
-              </div>
-              <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/stok')} />
+      {/* STOK KRITIS + JOB BERJALAN */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: '1.75rem' }}>
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: '0.9rem' }} />
+              <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Stok Bahan Baku Kritis</span>
             </div>
-            {loading ? <LoadingSpinner /> : stokKritis.length === 0 ? (
-              <EmptyState icon="pi-check-circle" text="Semua stok dalam kondisi aman" />
-            ) : (
-              <div className="flex flex-column gap-2">
-                {stokKritis.slice(0, 5).map((s, i) => (
-                  <div key={i} className="flex justify-content-between align-items-center px-3 py-2 border-round"
-                    style={{ background: '#fff5f5', border: '1px solid #fecaca' }}>
-                    <div>
-                      <p className="font-semibold m-0 text-sm">{s.material_name}</p>
-                      <p className="text-xs text-color-secondary m-0 mt-1">
-                        Min: {s.min_stock_level} {s.nama_satuan}
-                      </p>
-                    </div>
-                    <Tag
-                      value={`${s.current_stock} ${s.nama_satuan}`}
-                      severity={s.current_stock === 0 ? 'danger' : 'warning'}
-                    />
-                  </div>
-                ))}
-                {stokKritis.length > 5 && (
-                  <p className="text-xs text-color-secondary text-center m-0 mt-1">
-                    +{stokKritis.length - 5} item lainnya
-                  </p>
-                )}
-              </div>
-            )}
+            <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/stok')} />
           </div>
+          {loading ? <LoadingSpinner /> : stokKritis.length === 0 ? (
+            <EmptyState icon="pi-check-circle" text="Semua stok dalam kondisi aman" />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {stokKritis.slice(0, 5).map((s, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: '#fff5f5', border: '1px solid #fecaca' }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem' }}>{s.material_name}</p>
+                    <p style={{ margin: 0, marginTop: 2, fontSize: '0.72rem', color: 'var(--text-color-secondary)' }}>Min: {s.min_stock_level} {s.nama_satuan}</p>
+                  </div>
+                  <Tag value={`${s.current_stock} ${s.nama_satuan}`} severity={s.current_stock === 0 ? 'danger' : 'warning'} />
+                </div>
+              ))}
+              {stokKritis.length > 5 && <p style={{ margin: 0, marginTop: 2, fontSize: '0.72rem', color: 'var(--text-color-secondary)', textAlign: 'center' }}>+{stokKritis.length - 5} item lainnya</p>}
+            </div>
+          )}
         </div>
 
-        {/* Job Berjalan */}
-        <div className="col-12 lg:col-6">
-          <div style={cardStyle} className="h-full">
-            <div className="flex justify-content-between align-items-center mb-3">
-              <div className="flex align-items-center gap-2">
-                <i className="pi pi-spin pi-spinner" style={{ color: '#4f46e5', fontSize: '1rem' }} />
-                <h4 className="m-0" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Job Sedang Berjalan</h4>
-                {inProgressJobs.length > 0 && (
-                  <Tag value={inProgressJobs.length} severity="info" style={{ fontSize: '0.75rem' }} />
-                )}
-              </div>
-              <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/jadwal')} />
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="pi pi-spin pi-spinner" style={{ color: '#4f46e5', fontSize: '0.9rem' }} />
+              <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Job Sedang Berjalan</span>
+              {inProgressJobs.length > 0 && <Tag value={String(inProgressJobs.length)} severity="info" style={{ fontSize: '0.7rem' }} />}
             </div>
-            {loading ? <LoadingSpinner /> : inProgressJobs.length === 0 ? (
-              <EmptyState icon="pi-calendar" text="Tidak ada job yang sedang berjalan" />
-            ) : (
-              <div className="flex flex-column gap-2">
-                {inProgressJobs.slice(0, 5).map((j, i) => (
-                  <div key={i} className="flex justify-content-between align-items-center px-3 py-2 border-round"
-                    style={{ background: 'var(--surface-50)', border: '1px solid var(--surface-200)' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p className="font-semibold m-0 text-sm" style={{
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {j.job_id} — {j.nama_operasi ?? j.operation_type ?? '-'}
-                      </p>
-                      <p className="text-xs text-color-secondary m-0 mt-1">
-                        {j.machine_name ?? '-'} · {formatDate(j.scheduled_start)}
-                      </p>
-                    </div>
-                    <div style={{ marginLeft: '0.75rem', flexShrink: 0 }}>
-                      {jobStatusTemplate(j)}
-                    </div>
-                  </div>
-                ))}
-                {inProgressJobs.length > 5 && (
-                  <p className="text-xs text-color-secondary text-center m-0 mt-1">
-                    +{inProgressJobs.length - 5} job lainnya sedang berjalan
-                  </p>
-                )}
-              </div>
-            )}
+            <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/jadwal')} />
           </div>
+          {loading ? <LoadingSpinner /> : inProgressJobs.length === 0 ? (
+            <EmptyState icon="pi-calendar" text="Tidak ada job yang sedang berjalan" />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {inProgressJobs.slice(0, 5).map((j, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-50)', border: '1px solid var(--surface-200)' }}>
+                  <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.job_id} — {j.nama_operasi ?? j.operation_type ?? '-'}</p>
+                    <p style={{ margin: 0, marginTop: 2, fontSize: '0.72rem', color: 'var(--text-color-secondary)' }}>{j.machine_name ?? '-'} · {formatDate(j.scheduled_start)}</p>
+                  </div>
+                  {jobStatusTemplate(j)}
+                </div>
+              ))}
+              {inProgressJobs.length > 5 && <p style={{ margin: 0, marginTop: 2, fontSize: '0.72rem', color: 'var(--text-color-secondary)', textAlign: 'center' }}>+{inProgressJobs.length - 5} job lainnya</p>}
+            </div>
+          )}
         </div>
       </div>
 
       {/* RECENT JOBS TABLE */}
-      <div style={cardStyle} className="mb-4">
-        <div className="flex justify-content-between align-items-center mb-3">
-          <div className="flex align-items-center gap-2">
-            <i className="pi pi-list" style={{ color: '#7c3aed', fontSize: '1rem' }} />
-            <h4 className="m-0" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Aktivitas Job Terbaru</h4>
+      <div style={{ ...card, marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <i className="pi pi-list" style={{ color: '#7c3aed', fontSize: '0.9rem' }} />
+            <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Aktivitas Job Terbaru</span>
           </div>
           <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/jadwal')} />
         </div>
-        <DataTable
-          value={recentJobs}
-          loading={loading}
-          emptyMessage="Belum ada data job"
-          size="small"
-          stripedRows
-          style={{ fontSize: '0.875rem' }}
-        >
-          <Column header="No"          body={noUrut}                                           style={{ width: '3rem', textAlign: 'center' }} />
-          <Column field="job_id"       header="Job ID"                                         style={{ fontWeight: 600 }} />
-          <Column header="Operasi"     body={(r) => r.nama_operasi ?? r.operation_type ?? '-'} />
-          <Column header="Mesin"       body={(r) => r.machine_name ?? '-'} />
-          <Column header="Status"      body={jobStatusTemplate} />
-          <Column header="Dijadwalkan" body={(r) => formatDate(r.scheduled_start)} />
-          <Column header="Diperbarui"  body={(r) => formatDate(r.updated_at)} />
+        <DataTable value={recentJobs} loading={loading} emptyMessage="Belum ada data job" size="small" stripedRows style={{ fontSize: '0.82rem' }}>
+          <Column header="No"          body={(_, o) => o.rowIndex + 1}                              style={{ width: '3rem', textAlign: 'center' }} />
+          <Column field="job_id"       header="Job ID"                                              style={{ fontWeight: 600 }} />
+          <Column header="Operasi"     body={(r) => r.nama_operasi ?? r.operation_type ?? '-'}      />
+          <Column header="Mesin"       body={(r) => r.machine_name ?? '-'}                          />
+          <Column header="Status"      body={jobStatusTemplate}                                     />
+          <Column header="Dijadwalkan" body={(r) => formatDate(r.scheduled_start)}                  />
+          <Column header="Diperbarui"  body={(r) => formatDate(r.updated_at)}                       />
         </DataTable>
       </div>
 
       {/* LOG AKTIVITAS */}
-      <div style={cardStyle} className="mb-4">
-        <div className="flex justify-content-between align-items-center mb-3">
-          <div className="flex align-items-center gap-2">
-            <i className="pi pi-history" style={{ color: '#0891b2', fontSize: '1rem' }} />
-            <h4 className="m-0" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Log Aktivitas Sistem</h4>
+      <div style={{ ...card, marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <i className="pi pi-history" style={{ color: '#0891b2', fontSize: '0.9rem' }} />
+            <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Log Aktivitas Sistem</span>
           </div>
           <Button label="Lihat Semua" text size="small" onClick={() => router.push('/admin/monitoring/log')} />
         </div>
-        <DataTable
-          value={logs}
-          loading={loading}
-          emptyMessage="Belum ada log"
-          size="small"
-          stripedRows
-          style={{ fontSize: '0.875rem' }}
-        >
-          <Column header="No"          body={noUrut}                                                                  style={{ width: '3rem', textAlign: 'center' }} />
-          <Column header="Pengguna"    body={(r) => r.full_name || r.username || '-'} />
-          <Column header="Role"        body={(r) => r.role ? <Tag value={r.role} severity="info" /> : '-'} />
-          <Column field="module"       header="Modul" />
-          <Column header="Aksi"        body={(r) => <Tag value={r.action} severity={ACTION_CONFIG[r.action] ?? 'info'} />} />
-          <Column field="description"  header="Deskripsi" />
-          <Column header="Waktu"       body={(r) => formatDate(r.created_at)} />
+        <DataTable value={logs} loading={loading} emptyMessage="Belum ada log" size="small" stripedRows style={{ fontSize: '0.82rem' }}>
+          <Column header="No"         body={(_, o) => o.rowIndex + 1}                                                             style={{ width: '3rem', textAlign: 'center' }} />
+          <Column header="Pengguna"   body={(r) => r.full_name || r.username || '-'}                                               />
+          <Column header="Role"       body={(r) => r.role ? <Tag value={r.role} severity="info" /> : '-'}                         />
+          <Column field="module"      header="Modul"                                                                               />
+          <Column header="Aksi"       body={(r) => <Tag value={r.action} severity={ACTION_CONFIG[r.action] ?? 'info'} />}         />
+          <Column field="description" header="Deskripsi"                                                                           />
+          <Column header="Waktu"      body={(r) => formatDate(r.created_at)}                                                       />
         </DataTable>
       </div>
 
-      {/* RINGKASAN MODUL + RF + INFO SISTEM */}
-      <div className="grid mb-4">
-        <div className="col-12 lg:col-8">
-          <div style={cardStyle} className="h-full">
-            <div className="flex align-items-center gap-2 mb-3">
-              <i className="pi pi-th-large" style={{ color: '#059669', fontSize: '1rem' }} />
-              <h4 className="m-0" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Ringkasan Semua Modul</h4>
-            </div>
-            <div className="grid">
-              {modulItems.map((m, i) => (
-                <div key={i} className="col-6 md:col-4 mb-3">
-                  <div className="flex align-items-center gap-2">
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 8, background: m.bg,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
-                      <i className={`pi ${m.icon}`} style={{ color: m.color, fontSize: '1rem' }} />
-                    </div>
-                    <div>
-                      <p className="text-xl font-bold m-0" style={{ color: m.color }}>{m.value}</p>
-                      <p className="text-xs text-color-secondary m-0">{m.label}</p>
-                    </div>
-                  </div>
+      {/* RINGKASAN MODUL + INFO SISTEM */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: '1.75rem' }}>
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.9rem' }}>
+            <i className="pi pi-th-large" style={{ color: '#059669', fontSize: '0.9rem' }} />
+            <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Ringkasan Semua Modul</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {modulItems.map((m, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--surface-50)', border: '1px solid var(--surface-200)' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: m.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <i className={`pi ${m.icon}`} style={{ color: m.color, fontSize: '0.9rem' }} />
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="col-12 lg:col-4 flex flex-column gap-3">
-          {/* Model RF */}
-          <div style={cardStyle}>
-            <div className="flex align-items-center gap-2 mb-3">
-              <i className="pi pi-cog" style={{ color: '#7c3aed', fontSize: '1rem' }} />
-              <h4 className="m-0" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Model Prediksi RF</h4>
-            </div>
-            {modelRF ? (
-              <>
-                {rfRows.map((r, i) => (
-                  <div key={i} className="flex justify-content-between align-items-center py-2"
-                    style={{ borderBottom: i < rfRows.length - 1 ? '1px solid var(--surface-200)' : 'none' }}>
-                    <span className="text-color-secondary text-sm">{r.key}</span>
-                    <span className="font-semibold text-sm">{r.val}</span>
-                  </div>
-                ))}
-                <Button
-                  label="Reset / Update Model"
-                  icon="pi pi-refresh"
-                  size="small"
-                  outlined
-                  className="w-full mt-3"
-                  onClick={() => router.push('/admin/konfigurasi/model')}
-                />
-              </>
-            ) : (
-              <>
-                <p className="text-color-secondary text-sm mb-3">Model belum dilatih atau Flask tidak aktif.</p>
-                <Button
-                  label="Buka Halaman Model"
-                  icon="pi pi-cog"
-                  size="small"
-                  outlined
-                  className="w-full"
-                  onClick={() => router.push('/admin/konfigurasi/model')}
-                />
-              </>
-            )}
-          </div>
-
-          {/* Info Sistem */}
-          <div style={cardStyle}>
-            <div className="flex align-items-center gap-2 mb-3">
-              <i className="pi pi-info-circle" style={{ color: '#0891b2', fontSize: '1rem' }} />
-              <h4 className="m-0" style={{ fontSize: '0.95rem', fontWeight: 600 }}>Informasi Sistem</h4>
-            </div>
-            {[
-              { key: 'Sistem',     val: 'ERP Penjadwalan Produksi'                                           },
-              { key: 'Algoritma',  val: 'Fuzzy Mamdani + CCEA + RF'                                          },
-              { key: 'Status API', val: <Tag value="Online"  severity="success" />                           },
-              { key: 'Flask',      val: modelRF
-                  ? <Tag value="Online"  severity="success" />
-                  : <Tag value="Offline" severity="danger"  /> },
-            ].map((r, i) => (
-              <div key={i} className="flex justify-content-between align-items-center py-2"
-                style={{ borderBottom: i < 3 ? '1px solid var(--surface-200)' : 'none' }}>
-                <span className="text-color-secondary text-sm">{r.key}</span>
-                <span className="font-semibold text-sm">{r.val}</span>
+                <div>
+                  <p style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: m.color, lineHeight: 1 }}>{m.value}</p>
+                  <p style={{ margin: 0, marginTop: 2, fontSize: '0.7rem', color: 'var(--text-color-secondary)' }}>{m.label}</p>
+                </div>
               </div>
             ))}
           </div>
+        </div>
+
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.9rem' }}>
+            <i className="pi pi-info-circle" style={{ color: '#0891b2', fontSize: '0.9rem' }} />
+            <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Informasi Sistem</span>
+          </div>
+          {[
+            { key: 'Sistem',     val: 'ERP Penjadwalan Produksi'                    },
+            { key: 'Algoritma',  val: 'Fuzzy Mamdani + CCEA'                        },
+            { key: 'Status API', val: <Tag value="Online" severity="success" />     },
+            { key: 'Frontend',   val: 'Next.js + PrimeReact'                        },
+            { key: 'Backend',    val: 'Express.js + Flask'                          },
+          ].map((r, i, arr) => (
+            <div key={i}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-color-secondary)' }}>{r.key}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, textAlign: 'right', maxWidth: '55%' }}>{r.val}</span>
+              </div>
+              {i < arr.length - 1 && <Divider />}
+            </div>
+          ))}
         </div>
       </div>
 
       {/* AKSES CEPAT */}
       <SectionTitle>Akses Cepat</SectionTitle>
-      <div className="grid">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         {menuShortcuts.map((m, i) => (
-          <div key={i} className="col-12 md:col-6 lg:col-4">
-            <div
-              onClick={() => router.push(m.route)}
-              className="flex align-items-start gap-3 p-3 cursor-pointer"
-              style={{
-                ...cardStyle,
-                padding: '1rem',
-                transition: 'box-shadow 0.2s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
-              onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
-            >
-              <div style={{
-                width: 38, height: 38, borderRadius: 9, background: m.bg,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <i className={`pi ${m.icon}`} style={{ fontSize: '1rem', color: m.color }} />
-              </div>
-              <div>
-                <p className="font-semibold m-0 mb-1 text-sm">{m.label}</p>
-                <p className="text-xs text-color-secondary m-0">{m.desc}</p>
-              </div>
+          <div key={i} onClick={() => router.push(m.route)}
+            style={{ ...card, display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer', padding: '1rem', transition: 'box-shadow 0.2s, transform 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; }}
+          >
+            <div style={{ width: 36, height: 36, borderRadius: 9, background: m.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <i className={`pi ${m.icon}`} style={{ fontSize: '0.9rem', color: m.color }} />
+            </div>
+            <div>
+              <p style={{ margin: 0, marginBottom: 3, fontWeight: 600, fontSize: '0.85rem' }}>{m.label}</p>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-color-secondary)', lineHeight: 1.5 }}>{m.desc}</p>
             </div>
           </div>
         ))}

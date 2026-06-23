@@ -9,7 +9,7 @@
         "noEmit": true,
         "esModuleInterop": true,
         "module": "esnext",
-        "moduleResolution": "node",
+        "moduleResolution": "bundler",
         "resolveJsonModule": true,
         "isolatedModules": true,
         "jsx": "preserve",
@@ -24,6 +24,6 @@
             "@/*": ["./*"]
         }
     },
-    "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "app/(main)/master/users/utils/api.js", "app/components/SkeletonLoader.js"],
+    "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "app/(main)/master/users/utils/api.js", "app/components/SkeletonLoader.js", "app/(main)/admin/dashboard/page.js"],
     "exclude": ["node_modules"]
 }

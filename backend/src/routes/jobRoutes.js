@@ -12,22 +12,41 @@ import {
   rescheduleJobController,
   resetJobsBatchController,
   deleteJobController,
+  getJobPeriodeReport,
+  getJobRealisasiReport,
+  getJobKeterlambatanReport,
 } from '../controllers/jobController.js';
-import { authenticate, authorizeAdmin } from '../middleware/authMiddleware.js';
+import {
+  authenticate,
+  authorizeAdmin,
+  authorizeAdminOrManajer,
+} from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.get('/',                    authenticate, getAllJobsController);
-router.get('/urgent',              authenticate, getUrgentJobsController);
-router.get('/idle-machines',       authenticate, getIdleMachinesController);
-router.get('/status/:status',      authenticate, getJobsByStatusController);
-router.get('/:id',                 authenticate, getJobByIdController);
-router.post('/',                   authenticate, createJobController);
-router.patch('/reset-batch',       authenticate, resetJobsBatchController);
-router.put('/:id',                 authenticate, updateJobController);
-router.patch('/:id/actual',        authenticate, updateJobActualController);
-router.patch('/:id/status',        authenticate, updateJobStatusController);
-router.patch('/:id/reschedule',    authenticate, rescheduleJobController);
-router.delete('/:id',              authenticate, authorizeAdmin, deleteJobController);
+// Report routes — taruh SEBELUM /:id
+router.get('/report/periode',       authenticate, getJobPeriodeReport);
+router.get('/report/realisasi',     authenticate, getJobRealisasiReport);
+router.get('/report/keterlambatan', authenticate, getJobKeterlambatanReport);
+
+// GET
+router.get('/',               authenticate, getAllJobsController);
+router.get('/urgent',         authenticate, getUrgentJobsController);
+router.get('/idle-machines',  authenticate, getIdleMachinesController);
+router.get('/status/:status', authenticate, getJobsByStatusController);
+router.get('/:id',            authenticate, getJobByIdController);
+
+// POST
+router.post('/',            authenticate, authorizeAdminOrManajer, createJobController);
+router.post('/reset-batch', authenticate, authorizeAdmin,          resetJobsBatchController);
+
+// PUT / PATCH
+router.put('/:id',              authenticate, authorizeAdminOrManajer, updateJobController);
+router.patch('/:id/actual',     authenticate, authorizeAdminOrManajer, updateJobActualController);
+router.patch('/:id/status',     authenticate, authorizeAdminOrManajer, updateJobStatusController);
+router.patch('/:id/reschedule', authenticate, authorizeAdminOrManajer, rescheduleJobController);
+
+// DELETE
+router.delete('/:id', authenticate, authorizeAdmin, deleteJobController);
 
 export default router;

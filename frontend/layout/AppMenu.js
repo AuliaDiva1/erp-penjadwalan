@@ -35,7 +35,7 @@ const AppMenu = () => {
         items: [
           { label: "Data Pengguna",      icon: "pi pi-fw pi-users",    to: "/admin/pengguna"        },
           { label: "Data Mesin",         icon: "pi pi-fw pi-server",   to: "/admin/mesin"           },
-          { label: "Operational Type",   icon: "pi pi-fw pi-box",      to: "/admin/operation-types" },
+          { label: "Operational Type",   icon: "pi pi-fw pi-wrench",   to: "/admin/operation-types" },
           { label: "Bahan Baku",         icon: "pi pi-fw pi-box",      to: "/admin/materials"       },
           { label: "Satuan",             icon: "pi pi-fw pi-tag",      to: "/admin/satuan"          },
           { label: "Kalender Produksi",  icon: "pi pi-fw pi-calendar", to: "/admin/work-calendar"   },
@@ -48,7 +48,7 @@ const AppMenu = () => {
             label: "Fuzzy Mamdani",
             icon: "pi pi-fw pi-sliders-h",
             items: [
-              { label: "Parameter & Rules",    icon: "pi pi-fw pi-list",       to: "/admin/konfigurasi/fuzzy/parameter" },
+              { label: "Parameter & Rules",    icon: "pi pi-fw pi-table",      to: "/admin/konfigurasi/fuzzy/parameter" },
               { label: "Bobot Operation Type", icon: "pi pi-fw pi-percentage", to: "/admin/konfigurasi/fuzzy/bobot"     },
             ],
           },
@@ -59,16 +59,15 @@ const AppMenu = () => {
       {
         label: "MONITORING",
         items: [
-          { label: "Status Jadwal",   icon: "pi pi-fw pi-calendar",           to: "/admin/monitoring/jadwal" },
+          { label: "Status Jadwal",   icon: "pi pi-fw pi-clock",              to: "/admin/monitoring/jadwal" },
           { label: "Stok Bahan Baku", icon: "pi pi-fw pi-exclamation-circle", to: "/admin/monitoring/stok"   },
-          { label: "Log Aktivitas",   icon: "pi pi-fw pi-list",               to: "/admin/monitoring/log"    },
+          { label: "Log Aktivitas",   icon: "pi pi-fw pi-history",            to: "/admin/monitoring/log"    },
         ],
       },
       {
         label: "LAPORAN",
         items: [
-          { label: "Laporan Produksi", icon: "pi pi-fw pi-file",      to: "/admin/laporan/produksi" },
-          { label: "Laporan Stok",     icon: "pi pi-fw pi-file-edit", to: "/admin/laporan/stok"     },
+          { label: "Laporan Admin", icon: "pi pi-fw pi-file-edit", to: "/admin/laporan/stok" },
         ],
       },
     ];
@@ -111,8 +110,7 @@ const AppMenu = () => {
       {
         label: "LAPORAN",
         items: [
-          { label: "Laporan Kinerja",  icon: "pi pi-fw pi-chart-line", to: "/manajer/laporan/kinerja"  },
-          { label: "Laporan Makespan", icon: "pi pi-fw pi-chart-bar",  to: "/manajer/laporan/makespan" },
+          { label: "Laporan Kinerja", icon: "pi pi-fw pi-chart-line", to: "/manajer/laporan" },
         ],
       },
     ];
@@ -140,20 +138,20 @@ const AppMenu = () => {
               { label: "Stok Kritis", icon: "pi pi-fw pi-exclamation-triangle", to: "/gudang/stok/kritis" },
             ],
           },
-        ],
-      },
-      {
-        label: "PENGADAAN",
-        items: [
-          { label: "Notifikasi Pengadaan", icon: "pi pi-fw pi-bell",    to: "/gudang/pengadaan/notifikasi" },
-          { label: "Riwayat Pengadaan",    icon: "pi pi-fw pi-history", to: "/gudang/pengadaan/riwayat"    },
+          {
+            label: "Pengadaan",
+            icon: "pi pi-fw pi-shopping-cart",
+            items: [
+              { label: "Pengadaan Rutin",    icon: "pi pi-fw pi-history", to: "/gudang/pengadaan/pengadaan"    },
+              { label: "Pengadaan Stok Habis", icon: "pi pi-fw pi-bell",    to: "/gudang/pengadaan/notifikasi" }
+            ],
+          },
         ],
       },
       {
         label: "LAPORAN",
         items: [
-          { label: "Laporan Stok",      icon: "pi pi-fw pi-file",      to: "/gudang/laporan/stok"      },
-          { label: "Laporan Pengadaan", icon: "pi pi-fw pi-file-edit", to: "/gudang/laporan/pengadaan" },
+          { label: "Laporan Gudang", icon: "pi pi-fw pi-file", to: "/gudang/laporan" },
         ],
       },
     ];

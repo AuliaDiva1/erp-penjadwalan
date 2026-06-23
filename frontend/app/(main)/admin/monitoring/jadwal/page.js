@@ -1,12 +1,13 @@
 // MonitoringJadwalPage.jsx
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
+import { Dropdown } from 'primereact/dropdown';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import DetailJadwal from './components/DetailJadwal';
 import RevisiDialog from './components/RevisiDialog';
@@ -19,11 +20,19 @@ const STATUS_CONFIG = {
   revised: { label: 'Revised', severity: 'warning'   },
 };
 
+const STATUS_FILTER_OPTIONS = [
+  { label: 'Semua Status', value: null },
+  { label: 'Draft',        value: 'draft' },
+  { label: 'Final',        value: 'final' },
+  { label: 'Revised',      value: 'revised' },
+];
+
 export default function MonitoringJadwalPage() {
   const toast                             = useRef(null);
   const [jadwal, setJadwal]               = useState([]);
   const [loading, setLoading]             = useState(false);
   const [globalFilter, setGlobalFilter]   = useState('');
+  const [statusFilter, setStatusFilter]   = useState(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [revisiVisible, setRevisiVisible] = useState(false);
   const [selected, setSelected]           = useState(null);
@@ -40,6 +49,7 @@ export default function MonitoringJadwalPage() {
       });
       const json = await res.json();
       if (json.success) setJadwal(json.data);
+      else toast.current.show({ severity: 'error', summary: 'Gagal', detail: json.message || 'Gagal memuat data jadwal' });
     } catch {
       toast.current.show({ severity: 'error', summary: 'Error', detail: 'Gagal memuat data jadwal' });
     } finally {
@@ -51,14 +61,16 @@ export default function MonitoringJadwalPage() {
 
   const handleValidasi = (row) => {
     confirmDialog({
-      message: `Jadwal ${row.schedule_code} akan dijadikan Final. Lanjutkan?`,
-      header:  'Konfirmasi Validasi',
-      icon:    'pi pi-check-circle',
-      accept:  async () => {
+      message:     `Jadwal ${row.schedule_code} akan dijadikan Final. Lanjutkan?`,
+      header:      'Konfirmasi Validasi',
+      icon:        'pi pi-check-circle',
+      acceptLabel: 'Ya, Validasi',
+      rejectLabel: 'Batal',
+      accept: async () => {
         setActionLoading(true);
         try {
           const res  = await fetch(`${BASE_URL}/schedules/${row.id}/validate`, {
-            method: 'POST',
+            method:  'PATCH', // ✅ sesuai route backend (router.patch)
             headers: { Authorization: `Bearer ${getToken()}` },
           });
           const json = await res.json();
@@ -86,7 +98,7 @@ export default function MonitoringJadwalPage() {
     setActionLoading(true);
     try {
       const res  = await fetch(`${BASE_URL}/schedules/${selected.id}/revise`, {
-        method:  'POST',
+        method:  'PATCH', // ✅ sesuai route backend (router.patch)
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body:    JSON.stringify({ revision_note: revisiNote }),
       });
@@ -111,7 +123,9 @@ export default function MonitoringJadwalPage() {
     confirmDialog({
       message:         `Jadwal ${row.schedule_code} akan dihapus permanen. Lanjutkan?`,
       header:          'Konfirmasi Hapus',
-      icon:            'pi pi-trash',
+      icon:            'pi pi-exclamation-triangle',
+      acceptLabel:     'Ya, Hapus',
+      rejectLabel:     'Batal',
       acceptClassName: 'p-button-danger',
       accept: async () => {
         setActionLoading(true);
@@ -136,6 +150,11 @@ export default function MonitoringJadwalPage() {
     });
   };
 
+  const filteredJadwal = useMemo(() => {
+    if (!statusFilter) return jadwal;
+    return jadwal.filter((j) => j.status_jadwal === statusFilter);
+  }, [jadwal, statusFilter]);
+
   const stats = {
     total:   jadwal.length,
     draft:   jadwal.filter(j => j.status_jadwal === 'draft').length,
@@ -143,41 +162,67 @@ export default function MonitoringJadwalPage() {
     revised: jadwal.filter(j => j.status_jadwal === 'revised').length,
   };
 
-  const statusTemplate  = (row) => {
+  const statusTemplate = (row) => {
     const s = STATUS_CONFIG[row.status_jadwal] || { label: row.status_jadwal, severity: 'info' };
-    return <Tag value={s.label} severity={s.severity} />;
+    return <Tag value={s.label} severity={s.severity} style={{ minWidth: 64, justifyContent: 'center' }} />;
   };
 
+  const kodeTemplate = (row) => (
+    <div className="flex align-items-center gap-2">
+      <span className="font-semibold text-900">{row.schedule_code}</span>
+      {row.revision_count > 0 && (
+        <span className="text-xs text-color-secondary">(rev. {row.revision_count})</span>
+      )}
+    </div>
+  );
+
+  const validatedTemplate = (row) =>
+    row.validated_by_name
+      ? <span className="text-sm">{row.validated_by_name}</span>
+      : <span className="text-sm text-color-secondary">—</span>;
+
   const actionTemplate = (row) => (
-    <div className="flex gap-1">
-      <Button icon="pi pi-eye" rounded text severity="info" tooltip="Detail"
+    <div className="flex gap-1 justify-content-center">
+      <Button icon="pi pi-eye" rounded text severity="info" tooltip="Lihat Detail" tooltipOptions={{ position: 'top' }}
         onClick={() => { setSelected(row); setDetailVisible(true); }} />
       {!row.is_final && (
-        <Button icon="pi pi-check" rounded text severity="success" tooltip="Validasi"
+        <Button icon="pi pi-check" rounded text severity="success" tooltip="Validasi" tooltipOptions={{ position: 'top' }}
           onClick={() => handleValidasi(row)} loading={actionLoading} />
       )}
       {row.is_final && (
-        <Button icon="pi pi-replay" rounded text severity="warning" tooltip="Ajukan Revisi"
+        <Button icon="pi pi-replay" rounded text severity="warning" tooltip="Ajukan Revisi" tooltipOptions={{ position: 'top' }}
           onClick={() => { setSelected(row); setRevisiNote(''); setRevisiVisible(true); }} />
       )}
       {!row.is_final && (
-        <Button icon="pi pi-trash" rounded text severity="danger" tooltip="Hapus"
+        <Button icon="pi pi-trash" rounded text severity="danger" tooltip="Hapus" tooltipOptions={{ position: 'top' }}
           onClick={() => handleHapus(row)} loading={actionLoading} />
       )}
     </div>
   );
 
   const header = (
-    <div className="flex justify-content-between align-items-center">
-      <span className="text-sm text-color-secondary">Total {jadwal.length} jadwal</span>
-      <div className="flex gap-2 align-items-center">
-        <Button icon="pi pi-refresh" text onClick={fetchJadwal} loading={loading} tooltip="Refresh" />
-        <InputText
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder="Cari jadwal..."
-          style={{ width: '220px' }}
+    <div className="flex flex-wrap justify-content-between align-items-center gap-3">
+      <span className="text-sm text-color-secondary">
+        Menampilkan {filteredJadwal.length} dari {jadwal.length} jadwal
+      </span>
+      <div className="flex flex-wrap gap-2 align-items-center">
+        <Dropdown
+          value={statusFilter}
+          options={STATUS_FILTER_OPTIONS}
+          onChange={(e) => setStatusFilter(e.value)}
+          placeholder="Filter Status"
+          style={{ width: '160px' }}
         />
+        <span className="p-input-icon-left">
+          <i className="pi pi-search" />
+          <InputText
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder="Cari kode jadwal..."
+            style={{ width: '220px' }}
+          />
+        </span>
+        <Button icon="pi pi-refresh" outlined onClick={fetchJadwal} loading={loading} tooltip="Refresh" />
       </div>
     </div>
   );
@@ -196,17 +241,20 @@ export default function MonitoringJadwalPage() {
 
       <div className="grid mb-4">
         {[
-          { label: 'Total Jadwal', value: stats.total,   icon: 'pi-calendar',     color: '#6366f1' },
-          { label: 'Draft',        value: stats.draft,   icon: 'pi-file',         color: '#64748b' },
-          { label: 'Final',        value: stats.final,   icon: 'pi-check-circle', color: '#22c55e' },
-          { label: 'Revised',      value: stats.revised, icon: 'pi-refresh',      color: '#f59e0b' },
+          { label: 'Total Jadwal', value: stats.total,   icon: 'pi-calendar',     color: '#6366f1', bg: '#eef2ff' },
+          { label: 'Draft',        value: stats.draft,   icon: 'pi-file',         color: '#64748b', bg: '#f1f5f9' },
+          { label: 'Final',        value: stats.final,   icon: 'pi-check-circle', color: '#22c55e', bg: '#ecfdf5' },
+          { label: 'Revised',      value: stats.revised, icon: 'pi-refresh',      color: '#f59e0b', bg: '#fffbeb' },
         ].map((s, i) => (
           <div key={i} className="col-12 md:col-6 lg:col-3">
-            <div className="card p-4 flex align-items-center gap-3"
+            <div className="card p-3 flex align-items-center gap-3 shadow-1 border-round-xl"
               style={{ borderLeft: `4px solid ${s.color}` }}>
-              <i className={`pi ${s.icon} text-3xl`} style={{ color: s.color }} />
+              <div className="flex align-items-center justify-content-center border-round-lg"
+                style={{ width: 46, height: 46, background: s.bg }}>
+                <i className={`pi ${s.icon} text-xl`} style={{ color: s.color }} />
+              </div>
               <div>
-                <div className="text-2xl font-bold">{s.value}</div>
+                <div className="text-2xl font-bold line-height-1">{s.value}</div>
                 <div className="text-color-secondary text-sm">{s.label}</div>
               </div>
             </div>
@@ -214,24 +262,26 @@ export default function MonitoringJadwalPage() {
         ))}
       </div>
 
-      <div className="card">
+      <div className="card shadow-1 border-round-xl">
         <DataTable
-          value={jadwal} loading={loading}
-          paginator rows={10} rowsPerPageOptions={[5, 10, 25]}
+          value={filteredJadwal} loading={loading}
+          paginator rows={10} rowsPerPageOptions={[5, 10, 25, 50]}
           stripedRows globalFilter={globalFilter} header={header}
-          emptyMessage="Belum ada data jadwal"
+          emptyMessage="Belum ada data jadwal yang cocok"
           sortField="id" sortOrder={-1}
+          responsiveLayout="scroll"
+          className="p-datatable-sm"
         >
-          <Column field="schedule_code"     header="Kode"      sortable style={{ fontWeight: 600, width: '120px' }} />
-          <Column field="makespan"          header="Makespan"   body={(r) => `${r.makespan} menit`} sortable />
-          <Column field="total_jobs"        header="Jobs"       sortable style={{ width: '70px' }} />
-          <Column field="total_machines"    header="Mesin"      sortable style={{ width: '70px' }} />
-          <Column field="status_jadwal"     header="Status"     body={statusTemplate} sortable />
-          <Column field="revision_count"    header="Revisi"     sortable style={{ width: '70px' }} />
-          <Column field="validated_by_name" header="Divalidasi" body={(r) => r.validated_by_name || '-'} />
+          <Column field="schedule_code"     header="Kode"       body={kodeTemplate} sortable style={{ minWidth: 140 }} />
+          <Column field="makespan"          header="Makespan"   body={(r) => `${r.makespan} menit`} sortable style={{ width: 110 }} />
+          <Column field="total_jobs"        header="Jobs"       sortable style={{ width: 70, textAlign: 'center' }} />
+          <Column field="total_machines"    header="Mesin"      sortable style={{ width: 70, textAlign: 'center' }} />
+          <Column field="status_jadwal"     header="Status"     body={statusTemplate} sortable style={{ width: 110 }} />
+          <Column field="validated_by_name" header="Divalidasi" body={validatedTemplate} style={{ minWidth: 130 }} />
           <Column field="created_at"        header="Dibuat"
-            body={(r) => new Date(r.created_at).toLocaleDateString('id-ID')} sortable />
-          <Column header="Aksi"             body={actionTemplate} style={{ width: '130px' }} />
+            body={(r) => new Date(r.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+            sortable style={{ width: 120 }} />
+          <Column header="Aksi"             body={actionTemplate} style={{ width: 140 }} />
         </DataTable>
       </div>
 

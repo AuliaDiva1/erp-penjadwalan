@@ -9,7 +9,7 @@ import { getOperationTypeById } from '../models/operationTypeModel.js';
 
 export const getMaterialsByOperationTypeController = async (req, res) => {
   try {
-    const { operation_type_id } = req.params; // ✅ pindah ke params, lebih RESTful
+    const { operation_type_id } = req.query; // ✅ diambil dari query string, bukan params
     const data = await getMaterialsByOperationType(operation_type_id);
     res.json({ success: true, data });
   } catch (err) {

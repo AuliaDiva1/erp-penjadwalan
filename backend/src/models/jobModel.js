@@ -130,3 +130,29 @@ export const getIdleMachines = async () => {
     .where({ is_active: true })
     .whereNotIn('id', busyMachineIds.filter(Boolean));
 };
+
+export const getJobsPerPeriode = async ({ date_from, date_to, status } = {}) => {
+  const query = withJoins(db('jobs as j')).orderBy('j.created_at', 'desc');
+  if (date_from) query.where('j.created_at', '>=', date_from + ' 00:00:00');
+  if (date_to)   query.where('j.created_at', '<=', date_to   + ' 23:59:59');
+  if (status)    query.where('j.job_status', status);
+  return query;
+};
+
+export const getJobsRealisasi = async ({ date_from, date_to } = {}) => {
+  const query = withJoins(db('jobs as j'))
+    .where('j.job_status', 'Completed')
+    .orderBy('j.actual_end', 'desc');
+  if (date_from) query.where('j.actual_end', '>=', date_from + ' 00:00:00');
+  if (date_to)   query.where('j.actual_end', '<=', date_to   + ' 23:59:59');
+  return query;
+};
+
+export const getJobsKeterlambatan = async ({ date_from, date_to } = {}) => {
+  const query = withJoins(db('jobs as j'))
+    .where('j.deadline_warning', true)
+    .orderBy('j.actual_end', 'desc');
+  if (date_from) query.where('j.created_at', '>=', date_from + ' 00:00:00');
+  if (date_to)   query.where('j.created_at', '<=', date_to   + ' 23:59:59');
+  return query;
+};

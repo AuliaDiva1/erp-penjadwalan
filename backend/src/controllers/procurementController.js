@@ -3,6 +3,7 @@ import {
   getPendingProcurements,
   getProcurementById,
   updateProcurementStatus,
+  createManualProcurement,
 } from '../models/procurementModel.js';
 import {
   getMaterialById,
@@ -27,6 +28,29 @@ export const getPendingProcurementsController = async (req, res) => {
   }
 };
 
+export const createManualProcurementController = async (req, res) => {
+  try {
+    const { material_id, required_qty, notes } = req.body;
+    if (!material_id)
+      return res.status(400).json({ success: false, message: 'material_id wajib diisi' });
+
+    const material = await getMaterialById(material_id);
+    if (!material)
+      return res.status(404).json({ success: false, message: 'Bahan baku tidak ditemukan' });
+
+    const data = await createManualProcurement({
+      material_id:  Number(material_id),
+      required_qty: required_qty ? Number(required_qty) : undefined,
+      notes:        notes ?? null,
+      user_id:      req.user?.userId ?? null,
+    });
+
+    res.status(201).json({ success: true, message: 'Pengadaan manual berhasil dibuat', data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export const updateProcurementStatusController = async (req, res) => {
   try {
     const procurement = await getProcurementById(req.params.id);
@@ -42,11 +66,9 @@ export const updateProcurementStatusController = async (req, res) => {
         message: `Status tidak valid. Pilihan: ${VALID_STATUSES.join(', ')}`,
       });
 
-    // ✅ qty wajib diisi dan valid
     if (!required_qty || Number(required_qty) <= 0)
       return res.status(400).json({ success: false, message: 'Qty pengadaan wajib diisi dan lebih dari 0' });
 
-    // ✅ jika completed, stok otomatis bertambah
     if (status === 'completed') {
       const material = await getMaterialById(procurement.material_id);
       if (material) {

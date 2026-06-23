@@ -7,6 +7,10 @@ import {
   deleteMaterialController,
   getLowStockController,
   updateStockController,
+  getStockMovementReport,
+  getMaterialRequirementReport,
+  getStockMovementsByMaterialController,
+  getProcurementRecommendationController,
 } from '../controllers/materialController.js';
 import {
   authenticate,
@@ -16,17 +20,17 @@ import {
 
 const router = express.Router();
 
-// Semua role bisa lihat
-router.get('/', authenticate, getAllMaterialsController);
-router.get('/low-stock', authenticate, getLowStockController);
-router.get('/:id', authenticate, getMaterialByIdController);
+router.get('/',                           authenticate, getAllMaterialsController);
+router.get('/low-stock',                  authenticate, getLowStockController);
+router.get('/stock-movements/report',     authenticate, getStockMovementReport);
+router.get('/requirement-forecast',       authenticate, getMaterialRequirementReport);
+router.get('/procurement-recommendation', authenticate, getProcurementRecommendationController);
+router.get('/:id',                        authenticate, getMaterialByIdController);
+router.get('/:id/movements',              authenticate, getStockMovementsByMaterialController);
 
-// Admin dan Staff Gudang bisa tambah, edit stok
-router.post('/', authenticate, authorizeAdmin, createMaterial);
-router.put('/:id', authenticate, authorizeAdmin, updateMaterialController);
+router.post('/',         authenticate, authorizeAdmin,        createMaterial);
+router.put('/:id',       authenticate, authorizeAdmin,        updateMaterialController);
 router.patch('/:id/stock', authenticate, authorizeAdminOrStaff, updateStockController);
-
-// Hanya admin yang bisa hapus
-router.delete('/:id', authenticate, authorizeAdmin, deleteMaterialController);
+router.delete('/:id',    authenticate, authorizeAdmin,        deleteMaterialController);
 
 export default router;

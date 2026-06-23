@@ -10,6 +10,9 @@ const PROCUREMENT_SELECT = [
   'p.required_qty',
   'p.status',
   'p.is_auto',
+  'p.notes',
+  'p.user_id',
+  'u.full_name as created_by_name',
   'p.created_at',
   'p.updated_at',
 ];
@@ -17,7 +20,8 @@ const PROCUREMENT_SELECT = [
 const withJoins = () =>
   db('procurements as p')
     .leftJoin('materials as m', 'p.material_id', 'm.id')
-    .leftJoin('satuan as s', 'm.satuan_id', 's.id');
+    .leftJoin('satuan as s', 'm.satuan_id', 's.id')
+    .leftJoin('users as u', 'p.user_id', 'u.id');
 
 export const getAllProcurements = async () =>
   withJoins().select(PROCUREMENT_SELECT).orderBy('p.created_at', 'desc');
@@ -40,23 +44,39 @@ export const hasPendingProcurement = async (material_id) => {
 };
 
 export const createAutoProcurement = async ({ material_id, current_stock_at_trigger }) => {
+  const material = await db('materials').where({ id: material_id }).first();
+  const min = Number(material?.min_stock_level ?? 10);
+  const cur = Number(current_stock_at_trigger ?? 0);
+  const required_qty = Math.max(min - cur + 10, 10);
+
   const [id] = await db('procurements').insert({
     material_id,
     current_stock_at_trigger,
-    required_qty: 0,
-    status:       'pending',
-    is_auto:      true,
+    required_qty,
+    status:  'pending',
+    is_auto: true,
+    notes:   null,
+    user_id: null,
   });
   return getProcurementById(id);
 };
 
-export const createManualProcurement = async ({ material_id, current_stock_at_trigger }) => {
+export const createManualProcurement = async ({ material_id, required_qty, notes, user_id }) => {
+  const material = await db('materials').where({ id: material_id }).first();
+  if (!material) throw new Error('Bahan baku tidak ditemukan');
+
+  const cur = Number(material.current_stock ?? 0);
+  const min = Number(material.min_stock_level ?? 10);
+  const qty = required_qty ?? Math.max(min - cur + 10, 10);
+
   const [id] = await db('procurements').insert({
     material_id,
-    current_stock_at_trigger,
-    required_qty: 0,
-    status:       'pending',
-    is_auto:      false,
+    current_stock_at_trigger: cur,
+    required_qty: qty,
+    status:  'pending',
+    is_auto: false,
+    notes:   notes ?? null,
+    user_id: user_id ?? null,
   });
   return getProcurementById(id);
 };

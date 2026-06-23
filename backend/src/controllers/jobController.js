@@ -2,6 +2,12 @@ import { success, error } from '../utils/response.js';
 import * as Model from '../models/jobModel.js';
 import { db } from '../core/config/knex.js';
 import { getOperationTypeById } from '../models/operationTypeModel.js';
+import { updateStock } from '../models/materialModel.js';
+import {
+  getJobsPerPeriode,
+  getJobsRealisasi,
+  getJobsKeterlambatan,
+} from '../models/jobModel.js';
 
 const formatDateToMySQL = (dateStr) => {
   if (!dateStr) return null;
@@ -163,6 +169,7 @@ export const createJobController = async (req, res) => {
     return error(res, 'Gagal menambahkan job');
   }
 };
+
 export const updateJobController = async (req, res) => {
   try {
     const job = await Model.getJobById(req.params.id);
@@ -179,7 +186,6 @@ export const updateJobController = async (req, res) => {
       is_urgent, priority_override,
     } = req.body;
 
-    // Validasi range energy_consumption
     if (energy_consumption !== undefined && energy_consumption !== null) {
       const ec = Number(energy_consumption);
       if (isNaN(ec) || ec < 2.01 || ec > 14.98) {
@@ -287,9 +293,13 @@ export const updateJobActualController = async (req, res) => {
       const material = await db('materials').where({ id: job.material_id }).first();
       if (material) {
         const newStock = Math.max(0, material.current_stock - job.material_used);
-        await db('materials').where({ id: job.material_id }).update({
-          current_stock: newStock,
-          updated_at:    db.fn.now(),
+
+        await updateStock(job.material_id, newStock, {
+          movement_type: 'out',
+          source_type:   'production',
+          source_id:     job.id,
+          notes:         `Pemakaian produksi Job ${job.job_id}`,
+          created_by:    req.user?.userId || null,
         });
 
         if (newStock <= material.min_stock_level) {
@@ -425,5 +435,46 @@ export const deleteJobController = async (req, res) => {
   } catch (err) {
     console.error('deleteJob error:', err);
     return error(res, 'Gagal menghapus job');
+  }
+};
+
+export const getJobPeriodeReport = async (req, res) => {
+  try {
+    const { date_from, date_to, status } = req.query;
+    const data = await getJobsPerPeriode({ date_from, date_to, status });
+    const summary = {
+      total:       data.length,
+      pending:     data.filter(j => j.job_status === 'Pending').length,
+      scheduled:   data.filter(j => j.job_status === 'Scheduled').length,
+      in_progress: data.filter(j => j.job_status === 'In Progress').length,
+      completed:   data.filter(j => j.job_status === 'Completed').length,
+      delayed:     data.filter(j => j.job_status === 'Delayed').length,
+      failed:      data.filter(j => j.job_status === 'Failed').length,
+    };
+    res.json({ success: true, data, summary });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getJobRealisasiReport = async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+    const data = await getJobsRealisasi({ date_from, date_to });
+    const onTime    = data.filter(j => !j.deadline_warning).length;
+    const terlambat = data.filter(j =>  j.deadline_warning).length;
+    res.json({ success: true, data, summary: { total: data.length, on_time: onTime, terlambat } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getJobKeterlambatanReport = async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+    const data = await getJobsKeterlambatan({ date_from, date_to });
+    res.json({ success: true, data, summary: { total: data.length } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };

@@ -32,6 +32,12 @@ const STATUS_SEVERITY = {
   Completed: 'success', Delayed: 'danger', Failed: 'danger',
 };
 
+const SCHEDULE_STATUS_SEVERITY = {
+  draft: 'warning',
+  final: 'success',
+  revised: 'info',
+};
+
 const OPERATION_TYPES = [
   { label: 'Additive Manufacturing', value: 'Additive' },
   { label: 'Milling',  value: 'Milling'  },
@@ -64,10 +70,12 @@ export default function RiwayatPesananPage() {
   const toast  = useRef(null);
   const router = useRouter();
 
-  const [jobs,         setJobs]         = useState([]);
-  const [loading,      setLoading]      = useState(false);
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [filterStatus, setFilterStatus] = useState(null);
+  const [jobs,           setJobs]           = useState([]);
+  const [loading,        setLoading]        = useState(false);
+  const [globalFilter,   setGlobalFilter]   = useState('');
+  const [filterStatus,   setFilterStatus]   = useState(null);
+  const [filterSchedule, setFilterSchedule] = useState(null);
+  const [scheduleOptions, setScheduleOptions] = useState([]);
 
   const [editVisible,   setEditVisible]   = useState(false);
   const [actualVisible, setActualVisible] = useState(false);
@@ -93,9 +101,35 @@ export default function RiwayatPesananPage() {
     }
   };
 
-  useEffect(() => { fetchJobs(); }, []);
+  const fetchSchedules = async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/schedules`, 
+        { headers: { Authorization: `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (data.success) {
+        const opts = data.data.map(s => ({
+          label: `${s.schedule_code} (${s.status_jadwal})`,
+          value: s.id,
+          schedule_code: s.schedule_code,
+          status: s.status_jadwal,
+        }));
+        setScheduleOptions(opts);
+      }
+    } catch (err) {
+      console.error('Gagal fetch schedules', err);
+    }
+  };
 
-  const filteredJobs = filterStatus ? jobs.filter(j => j.job_status === filterStatus) : jobs;
+  useEffect(() => { 
+    fetchJobs();
+    fetchSchedules();
+  }, []);
+
+  const filteredJobs = jobs.filter(j => {
+    const statusMatch = !filterStatus || j.job_status === filterStatus;
+    const scheduleMatch = !filterSchedule || j.schedule_id === filterSchedule;
+    return statusMatch && scheduleMatch;
+  });
 
   const stats = {
     total:       jobs.length,
@@ -299,6 +333,10 @@ export default function RiwayatPesananPage() {
           <Tag value={filterStatus} severity={STATUS_SEVERITY[filterStatus] || 'info'}
             style={{ fontSize: '0.72rem' }} />
         )}
+        {filterSchedule && (
+          <Tag value={scheduleOptions.find(s => s.value === filterSchedule)?.schedule_code || 'Schedule'} 
+            severity="secondary" style={{ fontSize: '0.72rem' }} />
+        )}
         <span style={{ fontSize: '0.8rem', color: 'var(--text-color-secondary)' }}>
           {filteredJobs.length} job ditemukan
         </span>
@@ -308,6 +346,15 @@ export default function RiwayatPesananPage() {
           value={filterStatus} options={STATUS_OPTIONS}
           onChange={(e) => setFilterStatus(e.value)}
           placeholder="Filter Status" style={{ width: 150 }}
+        />
+        <Dropdown
+          value={filterSchedule} 
+          options={[
+            { label: 'Semua Jadwal', value: null },
+            ...scheduleOptions
+          ]}
+          onChange={(e) => setFilterSchedule(e.value)}
+          placeholder="Filter Jadwal" style={{ width: 200 }}
         />
         <Button icon="pi pi-refresh" text onClick={fetchJobs} loading={loading} tooltip="Refresh" tooltipOptions={{ position: 'top' }} />
         <span className="p-input-icon-left">
@@ -392,7 +439,7 @@ export default function RiwayatPesananPage() {
         >
           <Column field="job_id"         header="Job ID"          sortable style={{ fontWeight: 600, width: 100 }} />
           <Column field="operation_type" header="Operasi"         sortable style={{ width: 110 }} />
-         <Column header="Mesin"
+          <Column header="Mesin"
             body={(r) => {
               const name = r.assigned_machine_name || r.machine_name;
               const id   = r.assigned_machine_id;
@@ -401,15 +448,15 @@ export default function RiwayatPesananPage() {
               return <span style={{ color: 'var(--text-color-secondary)' }}>—</span>;
             }}
           />
-        <Column field="processing_time" header="Proc Time"
+          <Column field="processing_time" header="Proc Time"
             body={(r) => `${r.processing_time} mnt`} sortable style={{ width: 95 }} />
           <Column field="job_status" header="Status" body={statusTemplate} sortable style={{ width: 110 }} />
           <Column field="scheduled_start" header="Jadwal Mulai"
             body={(r) => formatDate(r.scheduled_start)} sortable />
-        <Column field="deadline_predicted" header="Deadline"
-          body={(r) => formatDate(r.deadline_customer || r.deadline_predicted)} 
-          sortable 
-        />
+          <Column field="deadline_predicted" header="Deadline"
+            body={(r) => formatDate(r.deadline_customer || r.deadline_predicted)} 
+            sortable 
+          />
           <Column field="actual_start" header="Aktual Mulai"
             body={(r) => formatDate(r.actual_start)} />
           <Column field="actual_end" header="Aktual Selesai"

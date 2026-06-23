@@ -9,18 +9,20 @@ import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
 import { ProgressBar } from 'primereact/progressbar';
 import FormUpdateStock from './components/FormUpdateStock';
+import RiwayatPemakaianDialog from './components/RiwayatPemakaianDialog';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function StokGudangPage() {
   const toast = useRef(null);
-  const [materials,      setMaterials]      = useState([]);
-  const [operationTypes, setOperationTypes] = useState([]);
-  const [loading,        setLoading]        = useState(false);
-  const [globalFilter,   setGlobalFilter]   = useState('');
-  const [filterOpType,   setFilterOpType]   = useState(null);
+  const [materials,          setMaterials]          = useState([]);
+  const [operationTypes,     setOperationTypes]     = useState([]);
+  const [loading,            setLoading]            = useState(false);
+  const [globalFilter,       setGlobalFilter]       = useState('');
+  const [filterOpType,       setFilterOpType]       = useState(null);
   const [stockDialogVisible, setStockDialogVisible] = useState(false);
-  const [selectedData,   setSelectedData]   = useState(null);
+  const [riwayatVisible,     setRiwayatVisible]     = useState(false);
+  const [selectedData,       setSelectedData]       = useState(null);
 
   const getToken = () => localStorage.getItem('TOKEN');
 
@@ -28,8 +30,8 @@ export default function StokGudangPage() {
     setLoading(true);
     try {
       const [resMat, resOp] = await Promise.all([
-        fetch(`${BASE_URL}/materials`,         { headers: { Authorization: `Bearer ${getToken()}` } }),
-        fetch(`${BASE_URL}/operation-types`,   { headers: { Authorization: `Bearer ${getToken()}` } }),
+        fetch(`${BASE_URL}/materials`,       { headers: { Authorization: `Bearer ${getToken()}` } }),
+        fetch(`${BASE_URL}/operation-types`, { headers: { Authorization: `Bearer ${getToken()}` } }),
       ]);
       const [dataMat, dataOp] = await Promise.all([resMat.json(), resOp.json()]);
       if (dataMat.success) setMaterials(dataMat.data);
@@ -74,9 +76,8 @@ export default function StokGudangPage() {
     const data = await res.json();
     if (data.success) {
       toast.current.show({ severity: 'success', summary: 'Berhasil', detail: data.message });
-      if (data.warning) {
+      if (data.warning)
         toast.current.show({ severity: 'warn', summary: 'Peringatan Stok', detail: data.warning, life: 6000 });
-      }
       setStockDialogVisible(false);
       fetchAll();
     } else {
@@ -92,11 +93,7 @@ export default function StokGudangPage() {
 
   const stokTemplate = (row) => {
     const s = getStokStatus(row);
-    return (
-      <span style={{ color: s.color }} className="font-semibold">
-        {row.current_stock} {row.nama_satuan}
-      </span>
-    );
+    return <span style={{ color: s.color }} className="font-semibold">{row.current_stock} {row.nama_satuan}</span>;
   };
 
   const progressTemplate = (row) => {
@@ -151,9 +148,7 @@ export default function StokGudangPage() {
 
       <div className="mb-4">
         <h2 className="m-0 mb-1">Data Stok Bahan Baku</h2>
-        <p className="m-0 text-color-secondary text-sm">
-          Pantau dan perbarui stok bahan baku sesuai kondisi gudang
-        </p>
+        <p className="m-0 text-color-secondary text-sm">Pantau dan perbarui stok bahan baku sesuai kondisi gudang</p>
       </div>
 
       <div className="grid mb-4">
@@ -189,6 +184,7 @@ export default function StokGudangPage() {
           rowsPerPageOptions={[5, 10, 25]}
           stripedRows
           globalFilter={globalFilter}
+          filters={{ global: { value: globalFilter, matchMode: 'contains' } }}
           header={header}
           emptyMessage="Belum ada data bahan baku"
           sortField="current_stock"
@@ -201,17 +197,29 @@ export default function StokGudangPage() {
           <Column field="current_stock"   header="Stok Saat Ini"   body={stokTemplate}   sortable />
           <Column field="min_stock_level" header="Batas Minimum"   body={(row) => `${row.min_stock_level} ${row.nama_satuan}`} sortable />
           <Column header="Progress Stok"  body={progressTemplate}  style={{ minWidth: '180px' }} />
-          <Column header="Status"         body={(row) => { const s = getStokStatus(row); return <Tag value={s.label} severity={s.severity} />; }} sortable sortField="current_stock" />
+          <Column
+            header="Status"
+            body={(row) => { const s = getStokStatus(row); return <Tag value={s.label} severity={s.severity} />; }}
+            sortable sortField="current_stock"
+          />
           <Column
             header="Aksi"
-            style={{ width: '80px' }}
+            style={{ width: '120px' }}
             body={(row) => (
-              <Button
-                icon="pi pi-box"
-                rounded text severity="warning"
-                tooltip="Update Stok"
-                onClick={() => { setSelectedData(row); setStockDialogVisible(true); }}
-              />
+              <div className="flex gap-1">
+                <Button
+                  icon="pi pi-box"
+                  rounded text severity="warning"
+                  tooltip="Update Stok"
+                  onClick={() => { setSelectedData(row); setStockDialogVisible(true); }}
+                />
+                <Button
+                  icon="pi pi-history"
+                  rounded text severity="info"
+                  tooltip="Riwayat Pemakaian"
+                  onClick={() => { setSelectedData(row); setRiwayatVisible(true); }}
+                />
+              </div>
             )}
           />
         </DataTable>
@@ -222,6 +230,12 @@ export default function StokGudangPage() {
         onHide={() => setStockDialogVisible(false)}
         onSave={handleUpdateStock}
         selectedData={selectedData}
+      />
+
+      <RiwayatPemakaianDialog
+        visible={riwayatVisible}
+        onHide={() => setRiwayatVisible(false)}
+        material={selectedData}
       />
     </div>
   );
