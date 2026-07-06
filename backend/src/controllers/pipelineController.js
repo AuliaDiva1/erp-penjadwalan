@@ -1,5 +1,6 @@
 import { success, error } from '../utils/response.js';
 import { db } from '../core/config/knex.js';
+import { generateScheduleCode } from '../models/scheduleModel.js';
 
 const PYTHON_API = process.env.PYTHON_API;
 
@@ -142,7 +143,7 @@ export const runPipeline = async (req, res) => {
     if (scheduleItems.length === 0)
       return res.status(500).json({ success: false, message: 'Pipeline selesai tapi schedule kosong.' });
 
-    const scheduleCode  = `SCH-${Date.now()}`;
+    const scheduleCode  = await generateScheduleCode();
     const totalMakespan = pipelineResult.makespan;
 
     const [scheduleId] = await db('schedules').insert({
@@ -166,10 +167,6 @@ export const runPipeline = async (req, res) => {
       const scheduledStart = new Date(item.scheduled_start.replace(' ', 'T') + '+07:00');
       const scheduledEnd   = new Date(item.scheduled_end.replace(' ', 'T')   + '+07:00');
 
-      // FIX: makespanJob HARUS pakai durasi kerja asli (processing_time / item.duration),
-      // BUKAN selisih scheduledEnd - scheduledStart mentah.
-      // Selisih mentah ikut menghitung jam non-kerja (di luar 08:00-17:00, weekend, libur)
-      // kalau job-nya kepotong jam tutup — makanya job 57 menit bisa kelihatan 957 menit.
       const durasiKerjaAsli = item.duration ?? item.predicted_duration ?? jobRow.processing_time;
       const makespanJob     = Math.round(Number(durasiKerjaAsli));
 

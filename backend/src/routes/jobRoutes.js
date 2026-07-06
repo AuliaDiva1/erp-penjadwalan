@@ -37,14 +37,16 @@ router.get('/status/:status', authenticate, getJobsByStatusController);
 router.get('/:id',            authenticate, getJobByIdController);
 
 // POST
-router.post('/',            authenticate, authorizeAdminOrManajer, createJobController);
-router.post('/reset-batch', authenticate, authorizeAdmin,          resetJobsBatchController);
+router.post('/', authenticate, authorizeAdminOrManajer, createJobController);
 
-// PUT / PATCH
-router.put('/:id',              authenticate, authorizeAdminOrManajer, updateJobController);
+// PATCH — static routes SEBELUM dynamic /:id
+router.patch('/reset-batch',    authenticate, authorizeAdminOrManajer,          resetJobsBatchController);
 router.patch('/:id/actual',     authenticate, authorizeAdminOrManajer, updateJobActualController);
 router.patch('/:id/status',     authenticate, authorizeAdminOrManajer, updateJobStatusController);
 router.patch('/:id/reschedule', authenticate, authorizeAdminOrManajer, rescheduleJobController);
+
+// PUT
+router.put('/:id', authenticate, authorizeAdminOrManajer, updateJobController);
 
 // DELETE
 router.delete('/:id', authenticate, authorizeAdmin, deleteJobController);

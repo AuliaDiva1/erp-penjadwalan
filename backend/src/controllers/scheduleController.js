@@ -8,6 +8,7 @@ import {
   deleteSchedule,
   validateSchedule,
   reviseSchedule,
+  generateScheduleCode,
 } from '../models/scheduleModel.js';
 
 const PYTHON_API = process.env.PYTHON_API;
@@ -56,7 +57,7 @@ const getMachineBusyUntil = async () => {
     .whereIn('j.job_status', ['Scheduled', 'In Progress'])
     .whereNotNull('j.scheduled_end')
     .whereNotNull('m.machine_id')
-    .where('j.scheduled_end', '>', now)   // ← tambah ini
+    .where('j.scheduled_end', '>', now)
     .select('m.machine_id as machine_code', 'j.scheduled_end');
 
   const busyUntil = {};
@@ -152,7 +153,7 @@ export const runPipeline = async (req, res) => {
     if (scheduleItems.length === 0)
       return res.status(500).json({ success: false, message: 'Pipeline selesai tapi schedule kosong.' });
 
-    const scheduleCode  = `SCH-${Date.now()}`;
+    const scheduleCode  = await generateScheduleCode();
     const totalMakespan = pipelineResult.makespan;
 
     const [scheduleId] = await db('schedules').insert({

@@ -73,32 +73,30 @@ DEFAULT_BOBOT: dict[str, float] = {
 # ---------------------------------------------------------------------------
 # Build default rules (27 kombinasi)
 # ---------------------------------------------------------------------------
-
 def _build_default_rules() -> list[dict[str, str]]:
     rules: list[dict[str, str]] = []
     for pt in ("Rendah", "Sedang", "Tinggi"):
         for ec in ("Rendah", "Sedang", "Tinggi"):
             for ma in ("Rendah", "Sedang", "Tinggi"):
+                # Tinggi: 8 rules
                 if pt == "Tinggi" and ec == "Tinggi":
                     prioritas = "Tinggi"
-                elif pt == "Tinggi" and ma == "Rendah":
+                elif pt == "Sedang" and ec == "Tinggi" and ma in ("Rendah", "Sedang"):
                     prioritas = "Tinggi"
-                elif pt == "Tinggi" and ec == "Sedang" and ma == "Rendah":
+                elif pt == "Tinggi" and ec == "Sedang" and ma in ("Rendah", "Sedang"):
                     prioritas = "Tinggi"
-                elif pt == "Sedang" and ec == "Tinggi" and ma == "Rendah":
+                elif pt == "Tinggi" and ec == "Rendah" and ma == "Rendah":
                     prioritas = "Tinggi"
-                elif pt == "Sedang" and ec == "Tinggi" and ma == "Sedang":
-                    prioritas = "Tinggi"
-                elif pt == "Rendah" and ec == "Rendah" and ma == "Tinggi":
+                # Rendah: 5 rules
+                elif pt == "Rendah" and ec == "Rendah" and ma in ("Sedang", "Tinggi"):
                     prioritas = "Rendah"
-                elif pt == "Rendah" and ec == "Rendah" and ma == "Sedang":
+                elif pt == "Rendah" and ec == "Sedang" and ma == "Tinggi":
                     prioritas = "Rendah"
-                elif pt == "Rendah" and ma == "Tinggi":
+                elif pt == "Rendah" and ec == "Tinggi" and ma == "Tinggi":
                     prioritas = "Rendah"
                 elif pt == "Sedang" and ec == "Rendah" and ma == "Tinggi":
                     prioritas = "Rendah"
-                elif pt == "Tinggi" and ec == "Rendah" and ma == "Tinggi":
-                    prioritas = "Sedang"
+                # Sedang: 14 rules (else)
                 else:
                     prioritas = "Sedang"
 
@@ -309,20 +307,7 @@ def _fuzzify(value: float, mf_dict: dict[str, tuple]) -> dict[str, float]:
 
 
 def _aggregate_output(fired_rules: list[tuple[float, str]]) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Agregasi output semua rule yang fired (Mamdani max-min).
 
-    Untuk setiap titik z pada universe of discourse:
-      1. Implication  : clip output MF tiap rule pada alpha (min)
-      2. Agregasi     : ambil nilai maksimum antar semua rule (max)
-
-    Implementasi vectorized NumPy untuk performa optimal.
-
-    Returns
-    -------
-    z_vals     : np.ndarray, titik-titik universe of discourse
-    aggregated : np.ndarray, nilai mu hasil agregasi di tiap titik z
-    """
     z_vals     = np.linspace(MIN_SKOR, MAX_SKOR, Z_RESOLUTION)
     aggregated = np.zeros(Z_RESOLUTION, dtype=np.float64)
 
@@ -341,19 +326,7 @@ def _aggregate_output(fired_rules: list[tuple[float, str]]) -> tuple[np.ndarray,
 
 
 def _defuzzify_centroid(z_vals: np.ndarray, mu_vals: np.ndarray) -> float:
-    """
-    Defuzzifikasi dengan metode centroid (center of gravity).
-
-    Formula:
-        z* = Σ(z · μ(z) · dz) / Σ(μ(z) · dz)
-
-    Karena z_vals dihasilkan dari np.linspace (jarak antar titik konstan),
-    faktor dz saling cancel sehingga rumus menjadi:
-        z* = Σ(z · μ(z)) / Σ(μ(z))
-
-    Jika seluruh μ = 0 (tidak ada rule fired atau semua alpha = 0),
-    dikembalikan DEFAULT_CRISP_FALLBACK.
-    """
+   
     denom = float(np.sum(mu_vals))
     if denom == 0.0:
         logger.debug(

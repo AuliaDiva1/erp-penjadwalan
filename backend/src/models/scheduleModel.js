@@ -1,10 +1,20 @@
 import { db } from '../core/config/knex.js';
 
 export const generateScheduleCode = async () => {
-  const last = await db('schedules').orderBy('id', 'desc').first();
-  if (!last) return 'SCH001';
-  const num = parseInt(last.schedule_code?.replace('SCH', '') || '0', 10);
-  return `SCH${String(num + 1).padStart(3, '0')}`;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `SCH/${year}/${month}/`;
+
+  const last = await db('schedules')
+    .whereRaw("schedule_code LIKE ?", [`${prefix}%`])
+    .orderByRaw("CAST(SUBSTRING(schedule_code, 13) AS UNSIGNED) DESC")
+    .first();
+
+  if (!last) return `${prefix}001`;
+
+  const num = parseInt(last.schedule_code.replace(prefix, ''), 10);
+  return `${prefix}${String(num + 1).padStart(3, '0')}`;
 };
 
 export const getAllSchedules = async () =>

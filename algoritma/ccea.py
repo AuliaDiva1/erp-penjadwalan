@@ -22,13 +22,25 @@ LOAD_BALANCE_WEIGHT    = 10.0
 EPSILON                = 1e-9
 LOG_INTERVAL           = 20
 ELITISM_RATE           = 0.2
+GENE_MAX               = 9999  
 
-Chromosome = list[tuple[int, str]]
+# Chromosome: list of (job_idx: int, gene_value: int)
+# gene_value di-decode ke machine_id via: machines[gene_value % len(machines)]
+Chromosome = list[tuple[int, int]]
 
 class CCEAInputError(ValueError): pass
 class CCEAConfigError(ValueError): pass
 
 _REQUIRED_JOB_KEYS = {"job_id", "processing_time"}
+
+
+# ============================================================
+# HELPER: decode gene_value → machine_id
+# ============================================================
+
+def _decode_machine(gene_value: int, machines: list) -> str:
+    """Pers. 26: M_j = (g_i mod m) + 1, di sini return machines[gene_value % m]"""
+    return machines[gene_value % len(machines)]
 
 
 # ============================================================
@@ -78,16 +90,14 @@ def _validate_config(cfg):
 
 
 # ============================================================
-# KALENDER HELPER
+# KALENDER HELPER (tidak berubah)
 # ============================================================
 
 def _parse_time(t_str):
-    """'08:00' atau '08:00:00' → (hour, minute)"""
     parts = t_str.split(':')
     return int(parts[0]), int(parts[1])
 
 def _is_workday(dt, kalender):
-    """Cek apakah dt adalah hari kerja (bukan libur, bukan weekend)."""
     day_name = dt.strftime('%A')
     date_str = dt.strftime('%Y-%m-%d')
     if day_name not in kalender.get('work_days', []):
@@ -97,13 +107,11 @@ def _is_workday(dt, kalender):
     return True
 
 def _get_work_start_dt(dt, kalender):
-    """Datetime jam mulai kerja pada hari dt."""
     h, m = _parse_time(kalender.get('work_start', '08:00'))
     return dt.replace(hour=h, minute=m, second=0, microsecond=0)
 
 def _get_work_end_dt(dt, kalender):
-    """Datetime jam selesai kerja pada hari dt (pakai overtime per hari kalau aktif)."""
-    day_name = dt.strftime('%A')  # "Monday", "Tuesday", dst
+    day_name = dt.strftime('%A')
     ot = kalender.get('overtime_per_day', {}).get(day_name, {})
     if ot.get('enabled') and ot.get('overtime_end'):
         h, m = _parse_time(ot['overtime_end'])
@@ -112,12 +120,6 @@ def _get_work_end_dt(dt, kalender):
     return dt.replace(hour=h, minute=m, second=0, microsecond=0)
 
 def _advance_to_worktime(dt, kalender):
-    """
-    Geser dt ke slot kerja berikutnya kalau:
-    - Bukan hari kerja / hari libur
-    - Sebelum jam mulai kerja
-    - Setelah/sama dengan jam selesai kerja
-    """
     for _ in range(365):
         if not _is_workday(dt, kalender):
             dt = _get_work_start_dt(dt + timedelta(days=1), kalender)
@@ -134,13 +136,8 @@ def _advance_to_worktime(dt, kalender):
     return dt
 
 def _add_work_minutes(start_dt, menit, kalender):
-    """
-    Tambah `menit` menit kerja ke start_dt,
-    skip jam non-kerja, weekend, dan hari libur.
-    """
     remaining = float(menit)
     current   = _advance_to_worktime(start_dt, kalender)
-
     for _ in range(10000):
         if remaining <= 0:
             break
@@ -155,49 +152,32 @@ def _add_work_minutes(start_dt, menit, kalender):
         else:
             remaining -= menit_tersisa_hari
             current    = _get_work_start_dt(current + timedelta(days=1), kalender)
-
     return current
 
 def _ensure_fits_today(start_dt, menit, kalender):
-    """
-    Non-preemptive: kalau sisa jam kerja hari ini tidak cukup buat
-    menyelesaikan job secara utuh, geser start ke awal hari kerja berikutnya.
-    Kalau durasi job > satu hari kerja penuh (tidak ada pilihan), biarkan
-    tetap mulai hari ini (akan dipecah oleh _add_work_minutes).
-    """
     current = _advance_to_worktime(start_dt, kalender)
     logger.debug("[EFT] input=%s menit=%.1f → setelah advance=%s", start_dt, menit, current)
-
     for i in range(365):
         work_end           = _get_work_end_dt(current, kalender)
         work_start         = _get_work_start_dt(current, kalender)
         menit_sehari_penuh = (work_end - work_start).total_seconds() / 60.0
         menit_tersisa_hari = (work_end - current).total_seconds() / 60.0
-
         logger.debug(
             "[EFT] iter=%d | current=%s | tersisa=%.1f | durasi=%.1f | sehari=%.1f",
             i, current, menit_tersisa_hari, menit, menit_sehari_penuh,
         )
-
-        # Job lebih panjang dari satu hari kerja penuh → terpaksa dipecah, biarkan
         if menit > menit_sehari_penuh:
             logger.debug("[EFT] → durasi > sehari, biarkan di %s", current)
             return current
-
-        # Sisa hari ini cukup → mulai sekarang
         if menit <= menit_tersisa_hari:
             logger.debug("[EFT] → cukup, mulai di %s", current)
             return current
-
-        # Tidak cukup → geser ke awal hari kerja berikutnya
         next_day = current + timedelta(days=1)
         current  = _advance_to_worktime(_get_work_start_dt(next_day, kalender), kalender)
         logger.debug("[EFT] → tidak cukup, geser ke %s", current)
-
     return current
 
 def _parse_mro_datetime(mro_str):
-    """Parse string datetime dari BE ke datetime object."""
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S.%f'):
         try:
             return datetime.strptime(mro_str, fmt)
@@ -207,7 +187,7 @@ def _parse_mro_datetime(mro_str):
 
 
 # ============================================================
-# FITNESS CACHE & SUBPOP CONTRIBUTION
+# FITNESS CACHE & SUBPOP CONTRIBUTION (tidak berubah)
 # ============================================================
 
 @dataclass
@@ -247,13 +227,14 @@ class SubpopContribution:
 def hitung_makespan(chromosome, jobs, machines, mro=None):
     """
     Versi float — dipakai internal CCEA untuk evolusi (cepat).
-    mro: dict {machine_id: float menit} — offset mesin busy.
-    Output start_time/end_time dalam menit float.
+    chromosome: list of (job_idx, gene_value)
+    gene_value di-decode ke machine_id via modulus (Pers. 26).
     """
     machine_time   = {m: float(mro.get(m, 0.0)) if mro else 0.0 for m in machines}
     job_ready_time = [0.0] * len(jobs)
     schedule       = []
-    for job_idx, machine_id in chromosome:
+    for job_idx, gene_value in chromosome:
+        machine_id = _decode_machine(gene_value, machines)  # ← MODULUS
         job        = jobs[job_idx]
         start_time = max(machine_time[machine_id], job_ready_time[job_idx])
         end_time   = start_time + float(job["processing_time"])
@@ -278,10 +259,8 @@ def hitung_makespan(chromosome, jobs, machines, mro=None):
 def hitung_makespan_calendar(chromosome, jobs, machines, mro_dt=None, kalender=None, pipeline_start=None):
     """
     Versi datetime + kalender — dipakai HANYA untuk output schedule final.
-    mro_dt: dict {machine_id: "YYYY-MM-DD HH:MM:SS"} dari BE (machine_busy_until).
-    kalender: dict config work_calendar dari BE.
-    pipeline_start: datetime titik awal (default: sekarang WIB).
-    Output start_time/end_time dalam string "YYYY-MM-DD HH:MM:SS".
+    chromosome: list of (job_idx, gene_value)
+    gene_value di-decode ke machine_id via modulus (Pers. 26).
     """
     now = pipeline_start or datetime.now()
 
@@ -302,14 +281,14 @@ def hitung_makespan_calendar(chromosome, jobs, machines, mro_dt=None, kalender=N
     job_ready_time = [now] * len(jobs)
     schedule       = []
 
-    for job_idx, machine_id in chromosome:
+    for job_idx, gene_value in chromosome:
+        machine_id = _decode_machine(gene_value, machines)  # ← MODULUS
         job = jobs[job_idx]
         pt  = float(job['processing_time'])
 
         raw_start = max(machine_time[machine_id], job_ready_time[job_idx])
 
         if kalender:
-            # NON-PREEMPTIVE: geser start ke besok kalau sisa hari ini tidak cukup
             start_dt = _ensure_fits_today(raw_start, pt, kalender)
             end_dt   = _add_work_minutes(start_dt, pt, kalender)
         else:
@@ -356,8 +335,10 @@ def _compute_fitness(chromosome, jobs, machines, cache, mro=None):
         for i, (job_idx, _) in enumerate(chromosome)
     )
 
+    # decode untuk hitung load per machine
     machine_loads = {}
-    for job_idx, machine_id in chromosome:
+    for job_idx, gene_value in chromosome:
+        machine_id = _decode_machine(gene_value, machines)  # ← MODULUS
         pt = float(jobs[job_idx]["processing_time"])
         machine_loads[machine_id] = machine_loads.get(machine_id, 0.0) + pt
 
@@ -377,7 +358,8 @@ def _compute_fitness(chromosome, jobs, machines, cache, mro=None):
 
     busy_penalty = 0.0
     if mro:
-        for _, machine_id in chromosome:
+        for _, gene_value in chromosome:
+            machine_id = _decode_machine(gene_value, machines)  # ← MODULUS
             busy_penalty += mro.get(machine_id, 0.0)
 
     result = 1.0 / (
@@ -401,6 +383,7 @@ def _inisialisasi_populasi(jobs, machines, pop_size, mro=None):
         key=lambda i: jobs[i].get("priority_score", PRIORITY_FALLBACK),
         reverse=True,
     )
+    # biased init: mesin paling free dapat gene_value yang lebih sering muncul
     sorted_machines = sorted(machines, key=lambda m: (mro or {}).get(m, 0.0))
 
     populasi = []
@@ -413,12 +396,16 @@ def _inisialisasi_populasi(jobs, machines, pop_size, mro=None):
 
         chromosome = []
         for rank, job_idx in enumerate(indices):
+            m = len(machines)
             if random.random() < 0.7:
-                top_free = max(1, len(sorted_machines) // 3)
-                machine  = random.choice(sorted_machines[:top_free])
+                # biased: ambil indeks mesin paling free, generate gene_value yang map ke sana
+                top_free   = max(1, m // 3)
+                target_idx = random.randint(0, top_free - 1)  # indeks di sorted_machines
+                # gene_value apapun yang mod m == target_idx
+                gene_value = target_idx + m * random.randint(0, GENE_MAX // m)
             else:
-                machine = random.choice(machines)
-            chromosome.append((job_idx, machine))
+                gene_value = random.randint(0, GENE_MAX)
+            chromosome.append((job_idx, gene_value))
         populasi.append(chromosome)
     return populasi
 
@@ -428,6 +415,7 @@ def _inisialisasi_populasi(jobs, machines, pop_size, mro=None):
 # ============================================================
 
 def _ox_crossover(order1, order2):
+    """OX crossover pada job_idx (task sequencing stage)."""
     n = len(order1)
     if n <= 1: return order1[:], order2[:]
     a, b = sorted(random.sample(range(n), 2))
@@ -445,26 +433,51 @@ def _ox_crossover(order1, order2):
     return _fill(order2, order1[a:b+1], a, b), _fill(order1, order2[a:b+1], a, b)
 
 def _crossover(p1, p2, rate):
-    if random.random() > rate or len(p1) <= 1: return p1[:], p2[:]
-    order_p1 = [j for j, _ in p1]; order_p2 = [j for j, _ in p2]
-    mach_p1  = [m for _, m in p1]; mach_p2  = [m for _, m in p2]
+    """
+    Task sequencing  → OX crossover (job_idx)
+    Processing space → single-point crossover (gene_value) ← sesuai jurnal
+    """
+    if random.random() > rate or len(p1) <= 1:
+        return p1[:], p2[:]
+
+    order_p1 = [j for j, _ in p1]
+    order_p2 = [j for j, _ in p2]
+    gene_p1  = [g for _, g in p1]
+    gene_p2  = [g for _, g in p2]
+
+    # Task sequencing: OX
     child_order1, child_order2 = _ox_crossover(order_p1, order_p2)
-    point = random.randint(1, len(p1) - 1)
-    return (list(zip(child_order1, mach_p1[:point] + mach_p2[point:])),
-            list(zip(child_order2, mach_p2[:point] + mach_p1[point:])))
+
+    # Processing space: single-point crossover pada gene_value
+    point      = random.randint(1, len(p1) - 1)
+    child_gene1 = gene_p1[:point] + gene_p2[point:]
+    child_gene2 = gene_p2[:point] + gene_p1[point:]
+
+    return (list(zip(child_order1, child_gene1)),
+            list(zip(child_order2, child_gene2)))
 
 def _mutasi(chromosome, machines, rate):
+    """
+    Task sequencing  → insertion mutation (geser posisi job)
+    Processing space → displacement mutation (ubah gene_value random)
+    """
     hasil = chromosome[:]
     n     = len(hasil)
+
+    # Displacement mutation pada gene_value (processing space)
     for i in range(n):
         if random.random() < rate:
-            hasil[i] = (hasil[i][0], random.choice(machines))
+            job_idx, _ = hasil[i]
+            hasil[i]   = (job_idx, random.randint(0, GENE_MAX))  # ← gene_value baru
+
+    # Insertion mutation pada job_idx (task sequencing)
     if n > 1 and random.random() < rate:
         src = random.randint(0, n - 1)
         dst = random.randint(0, n - 1)
         if src != dst:
-            job_idx, machine = hasil.pop(src)
-            hasil.insert(dst, (job_idx, machine))
+            gene_taken = hasil.pop(src)
+            hasil.insert(dst, gene_taken)
+
     return hasil
 
 def _seleksi_roulette(populasi, jobs, machines, cache, mro=None):
@@ -554,13 +567,16 @@ def run_ccea(jobs, machines, config=None, machine_ready_offset=None, kalender=No
     if len(jobs) == 1:
         job        = jobs[0]
         pt         = float(job["processing_time"])
-        machine_id = min(machines, key=lambda m: mro_float.get(m, 0.0))
+        # pilih mesin paling free, generate gene_value yang map ke mesin itu via modulus
+        best_machine_id  = min(machines, key=lambda m: mro_float.get(m, 0.0))
+        best_machine_idx = machines.index(best_machine_id)
+        gene_value       = best_machine_idx  # simplest: gene_value = idx, mod m = idx
 
         if kalender:
             raw_start = now
-            if machine_id in mro_dt and mro_dt[machine_id]:
+            if best_machine_id in mro_dt and mro_dt[best_machine_id]:
                 try:
-                    raw_start = _parse_mro_datetime(mro_dt[machine_id])
+                    raw_start = _parse_mro_datetime(mro_dt[best_machine_id])
                 except Exception:
                     raw_start = now
             start_dt = _ensure_fits_today(raw_start, pt, kalender)
@@ -568,21 +584,21 @@ def run_ccea(jobs, machines, config=None, machine_ready_offset=None, kalender=No
             makespan = (end_dt - now).total_seconds() / 60.0
             schedule_item = {
                 "job_id":              job["job_id"],
-                "assigned_machine_id": machine_id,
+                "assigned_machine_id": best_machine_id,
                 "scheduled_start":     start_dt.strftime('%Y-%m-%d %H:%M:%S'),
                 "scheduled_end":       end_dt.strftime('%Y-%m-%d %H:%M:%S'),
                 "duration_menit":      pt,
                 "priority_score":      job.get("priority_score", PRIORITY_FALLBACK),
             }
         else:
-            start_float = mro_float.get(machine_id, 0.0)
+            start_float = mro_float.get(best_machine_id, 0.0)
             end_float   = start_float + pt
             makespan    = end_float
             start_dt    = now + timedelta(minutes=start_float)
             end_dt      = now + timedelta(minutes=end_float)
             schedule_item = {
                 "job_id":              job["job_id"],
-                "assigned_machine_id": machine_id,
+                "assigned_machine_id": best_machine_id,
                 "scheduled_start":     start_dt.strftime('%Y-%m-%d %H:%M:%S'),
                 "scheduled_end":       end_dt.strftime('%Y-%m-%d %H:%M:%S'),
                 "duration_menit":      pt,
@@ -592,7 +608,7 @@ def run_ccea(jobs, machines, config=None, machine_ready_offset=None, kalender=No
         return {
             "makespan":    round(makespan, 2),
             "schedule":    [schedule_item],
-            "chromosome":  [(0, machine_id)],
+            "chromosome":  [(0, gene_value)],
             "generasi":    0,
             "cache_stats": "",
         }
