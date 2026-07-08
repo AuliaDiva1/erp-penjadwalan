@@ -358,23 +358,32 @@ export default function LandingERP() {
         .stat-item:nth-child(3) { animation-delay:0.3s; }
 
         .mobile-menu { max-height:0; overflow:hidden; transition:max-height 0.35s cubic-bezier(0.16,1,0.3,1); }
-        .mobile-menu.open { max-height:420px; }
+        .mobile-menu.open { max-height:480px; }
+
+        /* ── RESPONSIVE NAV ──
+           .show-mobile: hamburger, hidden by default, shown only on small screens.
+           .hide-mobile: desktop nav links + login button, hidden on small screens. */
+        .show-mobile { display: none; }
 
         @media(max-width:1024px) {
           .hero-grid   { grid-template-columns:1fr !important; }
           .grid-3      { grid-template-columns:repeat(2,1fr) !important; }
           .grid-4      { grid-template-columns:repeat(2,1fr) !important; }
           .pricing-row { flex-direction:column !important; align-items:center !important; }
+          .hide-mobile { display:none !important; }
+          .show-mobile { display:flex !important; align-items:center; justify-content:center; }
+          .navbar-inner { padding:12px 20px !important; }
         }
         @media(max-width:640px) {
           .grid-3,.grid-4 { grid-template-columns:1fr !important; }
-          .hide-mobile    { display:none !important; }
           .pricing-row    { padding:0 12px !important; }
+          .navbar-inner   { padding:10px 16px !important; }
+          .brand-text     { font-size:1.05rem !important; }
         }
       `}</style>
 
       {/* ══════════════ NAVBAR ══════════════ */}
-      <nav style={{
+      <nav className="navbar-inner" style={{
         position:'sticky', top:0, zIndex:50, padding:'14px 32px',
         display:'flex', alignItems:'center', justifyContent:'space-between',
         background: scrolled ? 'rgba(255,255,255,0.97)' : 'rgba(255,255,255,0.88)',
@@ -383,10 +392,10 @@ export default function LandingERP() {
         boxShadow: scrolled ? '0 2px 20px rgba(0,0,0,0.07)' : 'none',
         transition:'all 0.35s',
       }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
           {/* ── LOGO: ganti pi-cog → logo-white.svg ── */}
           <div
-            style={{ width:38, height:38, borderRadius:10, background:'linear-gradient(135deg,#4f46e5,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(79,70,229,0.4)', transition:'transform 0.2s', cursor:'pointer' }}
+            style={{ width:38, height:38, borderRadius:10, background:'linear-gradient(135deg,#4f46e5,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(79,70,229,0.4)', transition:'transform 0.2s', cursor:'pointer', flexShrink:0 }}
             onMouseEnter={e=>(e.currentTarget.style.transform='rotate(-8deg) scale(1.08)')}
             onMouseLeave={e=>(e.currentTarget.style.transform='rotate(0) scale(1)')}
           >
@@ -396,7 +405,7 @@ export default function LandingERP() {
               style={{ width:24, height:24, objectFit:'contain' }}
             />
           </div>
-          <span style={{fontWeight:700,fontSize:'1.2rem',color:'#0f172a',letterSpacing:'-0.02em'}}>
+          <span className="brand-text" style={{fontWeight:700,fontSize:'1.2rem',color:'#0f172a',letterSpacing:'-0.02em',whiteSpace:'nowrap'}}>
             ERP<span style={{color:'#4f46e5'}}>Jadwal</span>
           </span>
         </div>
@@ -410,28 +419,45 @@ export default function LandingERP() {
           ))}
         </div>
 
-        <div className="hide-mobile" style={{display:'flex',gap:8}}>
+        <div className="hide-mobile" style={{display:'flex',gap:8,flexShrink:0}}>
           <button onClick={()=>router.push('/auth/login')}
-            style={{padding:'9px 22px',borderRadius:8,border:'1.5px solid #e2e8f0',background:'transparent',fontWeight:600,fontSize:'0.875rem',cursor:'pointer',color:'#374151',fontFamily:"'Poppins',sans-serif",transition:'all 0.2s'}}
+            style={{padding:'9px 22px',borderRadius:8,border:'1.5px solid #e2e8f0',background:'transparent',fontWeight:600,fontSize:'0.875rem',cursor:'pointer',color:'#374151',fontFamily:"'Poppins',sans-serif",transition:'all 0.2s',whiteSpace:'nowrap'}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor='#4f46e5';e.currentTarget.style.color='#4f46e5';e.currentTarget.style.background='#f0f0ff';}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor='#e2e8f0';e.currentTarget.style.color='#374151';e.currentTarget.style.background='transparent';}}
           >Masuk</button>
         </div>
 
-        <button style={{display:'none',background:'none',border:'none',cursor:'pointer',padding:8}} className="show-mobile" onClick={()=>setMobileMenuOpen(!mobileMenuOpen)}>
-          <i className={`pi ${mobileMenuOpen?'pi-times':'pi-bars'}`} style={{fontSize:'1.2rem'}}/>
+        {/* Hamburger — hanya tampil di layar ≤1024px */}
+        <button
+          className="show-mobile"
+          aria-label="Buka menu"
+          style={{background:'none',border:'none',cursor:'pointer',padding:8,flexShrink:0,width:40,height:40,borderRadius:8}}
+          onClick={()=>setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          <i className={`pi ${mobileMenuOpen?'pi-times':'pi-bars'}`} style={{fontSize:'1.25rem',color:'#374151'}}/>
         </button>
       </nav>
 
-      <div className={`mobile-menu ${mobileMenuOpen?'open':''}`} style={{background:'#fff',borderBottom:'1px solid #e2e8f0',padding:mobileMenuOpen?'12px 24px 16px':'0 24px'}}>
+      <div className={`mobile-menu ${mobileMenuOpen?'open':''}`} style={{background:'#fff',borderBottom:'1px solid #e2e8f0',padding:mobileMenuOpen?'12px 24px 20px':'0 24px'}}>
         {['Fitur','Modul','Alur','Harga','FAQ'].map(item=>(
           <a key={item} href={`#${item.toLowerCase()}`} onClick={()=>setMobileMenuOpen(false)}
             style={{display:'block',padding:'12px 0',color:'#374151',textDecoration:'none',fontWeight:500,borderBottom:'1px solid #f1f5f9'}}>{item}</a>
         ))}
-        <button onClick={()=>router.push('/auth/login')} className="shimmer-btn"
-          style={{width:'100%',marginTop:12,padding:12,borderRadius:8,border:'none',color:'#fff',fontWeight:600,cursor:'pointer',fontFamily:"'Poppins',sans-serif"}}>
-          Masuk ke Sistem
-        </button>
+        <div style={{display:'flex',gap:8,marginTop:14}}>
+          <button
+            onClick={()=>{ setMobileMenuOpen(false); router.push('/auth/login'); }}
+            style={{flex:1,padding:'12px',borderRadius:8,border:'1.5px solid #e2e8f0',background:'#fff',fontWeight:600,fontSize:'0.9rem',cursor:'pointer',color:'#374151',fontFamily:"'Poppins',sans-serif"}}
+          >
+            Masuk
+          </button>
+          <button
+            onClick={()=>{ setMobileMenuOpen(false); router.push('/auth/login'); }}
+            className="shimmer-btn"
+            style={{flex:1,padding:12,borderRadius:8,border:'none',color:'#fff',fontWeight:600,fontSize:'0.9rem',cursor:'pointer',fontFamily:"'Poppins',sans-serif"}}
+          >
+            Daftar
+          </button>
+        </div>
       </div>
 
       {/* ══════════════ TICKER ══════════════ */}
