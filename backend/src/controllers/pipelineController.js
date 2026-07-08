@@ -36,10 +36,12 @@ const getMachinesForPipeline = async () =>
     .select('id', 'machine_id', 'machine_name')
     .orderBy('machine_id', 'asc');
 
+// NOTE: Knex connection is now configured with `timezone: "+07:00"` (see knex.js),
+// so Date objects returned by mysql2 are already correctly anchored to WIB.
+// No manual +7h offset is needed anymore here — that was causing a double-shift bug.
 const toMySQL = (d) => {
   const dt = d instanceof Date ? d : new Date(d);
-  const wib = new Date(dt.getTime() + 7 * 60 * 60 * 1000);
-  return wib.toISOString().slice(0, 19).replace('T', ' ');
+  return dt.toISOString().slice(0, 19).replace('T', ' ');
 };
 
 const getMachineBusyUntil = async () => {

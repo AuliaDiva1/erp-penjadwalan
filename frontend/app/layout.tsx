@@ -1,7 +1,12 @@
-'use client';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
+import '../styles/layout/layout.scss';
+import '../styles/demo/Demos.scss';
+import '../styles/gradient.css';
+
 import { LayoutProvider } from '../layout/context/layoutcontext';
 import { PrimeReactProvider } from 'primereact/api';
-
 
 interface RootLayoutProps {
     children: React.ReactNode;

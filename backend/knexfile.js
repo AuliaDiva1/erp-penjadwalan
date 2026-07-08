@@ -10,6 +10,8 @@ const knexConfig = {
       user: String(process.env.DB_USERNAME) || "root",
       password: String(process.env.DB_PASSWORD) || "",
       database: String(process.env.DB_NAME) || "",
+      ssl: sslConfig,
+      timezone: "+07:00",
     },
     migrations: {
       directory: "./src/migrations",

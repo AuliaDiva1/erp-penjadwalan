@@ -16,7 +16,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 
 const Layout = ({ children }) => {
     const { layoutConfig, layoutState, setLayoutState } = useContext(LayoutContext);
-    const { setRipple } = useContext(PrimeReactContext);
+    const { setRipple } = useContext(PrimeReactContext) || {};
     const topbarRef = useRef(null);
     const sidebarRef = useRef(null);
     const [bindMenuOutsideClickListener, unbindMenuOutsideClickListener] = useEventListener({
